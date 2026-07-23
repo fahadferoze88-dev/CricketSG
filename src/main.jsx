@@ -169,6 +169,7 @@ function MatchCard({ match }) {
   const teams = groupBy(match.batting, "team_slot");
   const bowlingTeams = groupBy(match.bowling, "team_slot");
   const footers = scorecardFooters(match);
+  const slotCaptains = captainSlots(match);
   return (
     <article className="match-card">
       <div className="result-hero">
@@ -176,8 +177,8 @@ function MatchCard({ match }) {
         <h3>{matchResultText(match)}</h3>
         {match.has_true_totals && match.team_totals && (
           <p>
-            {sideLabel(match, "Team 1")} {formatStat(match.team_totals["Team 1"], "integer")} ·{" "}
-            {sideLabel(match, "Team 2")} {formatStat(match.team_totals["Team 2"], "integer")}
+            {sideLabel(match, "Team 1", slotCaptains)} {formatStat(match.team_totals["Team 1"], "integer")} ·{" "}
+            {sideLabel(match, "Team 2", slotCaptains)} {formatStat(match.team_totals["Team 2"], "integer")}
           </p>
         )}
       </div>
@@ -185,7 +186,7 @@ function MatchCard({ match }) {
         {Object.entries(teams).map(([teamSlot, rows]) => (
           <ScorecardBlock
             key={teamSlot}
-            title={sideLabel(match, teamSlot)}
+            title={sideLabel(match, teamSlot, slotCaptains)}
             side={rows[0]?.side}
             rows={rows}
             footerRows={footers.batting.get(teamSlot)}
@@ -200,7 +201,7 @@ function MatchCard({ match }) {
         {Object.entries(bowlingTeams).map(([teamSlot, rows]) => (
           <ScorecardBlock
             key={`${teamSlot}-bowling`}
-            title={`${sideLabel(match, teamSlot)} bowling`}
+            title={`${sideLabel(match, teamSlot, slotCaptains)} bowling`}
             side={rows[0]?.side}
             rows={rows}
             footerRows={footers.bowling.get(teamSlot)}
@@ -476,6 +477,9 @@ function LeaderboardTable({ type, rows, compact = true }) {
 
 function Table({ rows, columns, ranked = false, compact = false, footerRows = [] }) {
   const optionalColumns = columns.filter(([, , kind]) => kind?.includes("optional"));
+  const primaryKey = columns.find(([key, , kind]) => {
+    return key !== "player" && key !== "matches_display" && isNumericKind(kind) && !kind?.includes("optional");
+  })?.[0];
   return (
     <div className={compact ? "table-wrap compact" : "table-wrap"}>
       <table>
@@ -490,10 +494,14 @@ function Table({ rows, columns, ranked = false, compact = false, footerRows = []
         <tbody>
           {rows.map((row, index) => (
             <React.Fragment key={`${row.player || row.date_label || row.id}-${index}`}>
-              <tr>
+              <tr className="data-row">
                 {ranked && <td className="rank-col">{row.rank}</td>}
                 {columns.map(([key, , kind]) => (
-                  <td key={key} className={cellClass(row[key], kind)} data-label={key}>
+                  <td
+                    key={key}
+                    className={cellClass(row[key], kind, key, primaryKey)}
+                    data-label={labelForColumn(columns, key)}
+                  >
                     {renderCell(row[key], kind)}
                   </td>
                 ))}
@@ -521,10 +529,14 @@ function Table({ rows, columns, ranked = false, compact = false, footerRows = []
         {footerRows.length > 0 && (
           <tfoot>
             {footerRows.map((row) => (
-              <tr key={row.player}>
+              <tr key={row.player} className="footer-row">
                 {ranked && <td className="rank-col" />}
                 {columns.map(([key, , kind]) => (
-                  <td key={key} className={cellClass(row[key], kind)} data-label={key}>
+                  <td
+                    key={key}
+                    className={cellClass(row[key], kind, key, primaryKey)}
+                    data-label={labelForColumn(columns, key)}
+                  >
                     {renderCell(row[key], kind)}
                   </td>
                 ))}
@@ -733,22 +745,37 @@ function scorecardFooters(match) {
   return { batting, bowling };
 }
 
-function sideLabel(match, teamSlot) {
-  const captain = captainForSlot(match, teamSlot);
+function sideLabel(match, teamSlot, slotCaptains = captainSlots(match)) {
+  const captain = captainForSlot(match, teamSlot, slotCaptains);
   return captain ? `${captain}${captain.endsWith("s") ? "'" : "'s"} team` : display(teamSlot);
 }
 
-function captainForSlot(match, teamSlot) {
+function captainForSlot(match, teamSlot, slotCaptains = captainSlots(match)) {
+  if (slotCaptains.has(teamSlot)) return slotCaptains.get(teamSlot);
   if (match.winner_slot === teamSlot) return match.winning_captain;
   if (match.winner_slot && match.winner_slot !== teamSlot) return match.losing_captain;
   return null;
 }
 
+function captainSlots(match) {
+  const slots = new Map();
+  if (match.winner_slot && match.winning_captain) slots.set(match.winner_slot, match.winning_captain);
+  const losingSlot = match.innings?.find((innings) => innings.batting_slot !== match.winner_slot)?.batting_slot;
+  if (losingSlot && match.losing_captain) slots.set(losingSlot, match.losing_captain);
+  if (match.id === "20260710_1" && losingSlot && !slots.has(losingSlot)) slots.set(losingSlot, "Daniyal");
+
+  return slots;
+}
+
 function renderCell(value, kind = "") {
-  if (kind.includes("integer") || kind.includes("decimal") || kind.includes("percent") || kind.includes("strike")) {
+  if (isNumericKind(kind)) {
     return <span className="num">{formatStat(value, kind)}</span>;
   }
   return display(value);
+}
+
+function isNumericKind(kind = "") {
+  return kind.includes("integer") || kind.includes("decimal") || kind.includes("percent") || kind.includes("strike") || kind.includes("matches");
 }
 
 function formatStat(value, kind = "integer") {
@@ -770,13 +797,19 @@ function numberClass(value) {
   return "numeric";
 }
 
-function cellClass(value, kind = "") {
+function cellClass(value, kind = "", key = "", primaryKey = "") {
   const classes = [];
-  if (kind.includes("integer") || kind.includes("decimal") || kind.includes("percent") || kind.includes("strike") || kind.includes("matches")) {
+  if (isNumericKind(kind)) {
     classes.push(numberClass(value));
   }
   if (kind.includes("optional")) classes.push("optional");
+  if (key === primaryKey) classes.push("primary-cell");
+  if (key === "matches_display") classes.push("meta-cell");
   return classes.join(" ");
+}
+
+function labelForColumn(columns, key) {
+  return columns.find(([columnKey]) => columnKey === key)?.[1] || key;
 }
 
 function display(value) {

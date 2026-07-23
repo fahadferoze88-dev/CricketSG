@@ -47,6 +47,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background: var(--chalk);
 }
 
@@ -159,8 +160,10 @@ main {
 
 .page-shell {
   width: min(1120px, 100%);
+  max-width: 100%;
   margin: 0 auto;
   padding: 26px 16px 46px;
+  overflow-x: hidden;
 }
 
 .page-intro {
@@ -224,6 +227,9 @@ main {
 }
 
 .day-leaders {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 14px;
   background: var(--white);
   border: 1px solid var(--line);
@@ -274,6 +280,8 @@ main {
 .notice-card,
 .player-search-card,
 .player-record {
+  min-width: 0;
+  max-width: 100%;
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -354,10 +362,26 @@ main {
 }
 
 .table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--white);
+}
+
+.table-wrap::after {
+  content: "Swipe table";
+  display: none;
+  padding: 6px 9px;
+  color: var(--green-mid);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
 }
 
 .match-card .table-wrap,
@@ -823,24 +847,25 @@ td:first-child {
 
 @media (max-width: 520px) {
   .page-shell {
-    padding: 22px 10px 38px;
+    padding: 16px 8px 34px;
   }
 
   .site-header {
     align-items: flex-start;
     flex-direction: column;
-    gap: 10px;
-    padding: 10px;
+    gap: 8px;
+    padding: 8px;
   }
 
   .brand img,
   .brand-fallback {
-    width: 36px;
-    height: 36px;
+    width: 30px;
+    height: 30px;
   }
 
   .brand span:last-child {
-    max-width: 230px;
+    max-width: none;
+    font-size: 16px;
   }
 
   .nav {
@@ -850,13 +875,13 @@ td:first-child {
 
   .nav a {
     flex: 1;
-    padding: 10px 4px;
-    font-size: 11px;
+    padding: 8px 2px;
+    font-size: 10px;
     text-align: center;
   }
 
   .page-intro h1 {
-    font-size: 40px;
+    font-size: 34px;
   }
 
   .page-intro p:last-child {
@@ -870,7 +895,7 @@ td:first-child {
   }
 
   .section-heading h2 {
-    font-size: 27px;
+    font-size: 24px;
   }
 
   .day-leaders,
@@ -884,8 +909,8 @@ td:first-child {
   }
 
   .tabs button {
-    padding: 9px 10px;
-    font-size: 11px;
+    padding: 8px 9px;
+    font-size: 10px;
   }
 
   .result-hero {
@@ -893,7 +918,7 @@ td:first-child {
   }
 
   .result-hero h3 {
-    font-size: 32px;
+    font-size: 28px;
   }
 
   .result-hero p:last-child {
@@ -908,7 +933,7 @@ td:first-child {
   }
 
   table {
-    min-width: 0;
+    min-width: 520px;
     font-size: 13px;
   }
 
@@ -927,42 +952,125 @@ td:first-child {
     font-size: 15px;
   }
 
-  .compact th:first-child,
-  .compact td:first-child {
-    width: 44%;
+  .compact thead {
+    display: table-header-group;
   }
 
-  .compact th.optional,
-  .compact td.optional {
+  .compact table {
+    display: table;
+    width: 100%;
+    min-width: 620px;
+    table-layout: auto;
+  }
+
+  .compact.table-wrap::after {
+    display: block;
+  }
+
+  .compact tbody {
+    display: table-row-group;
+  }
+
+  .compact tfoot {
+    display: table-footer-group;
+  }
+
+  .compact tr,
+  .compact tbody tr.data-row,
+  .compact tfoot tr {
+    display: table-row;
+    width: auto;
+    padding: 0;
+  }
+
+  .compact td::before {
+    content: none;
+  }
+
+  .compact .rank-col {
+    display: table-cell;
+    width: 34px;
+    color: var(--red);
+    font-size: 17px;
+    line-height: 1.2;
+  }
+
+  .compact .rank-col::before {
     display: none;
   }
 
+  .compact .rank-col + td {
+    display: table-cell;
+    text-align: left;
+    font-size: 14px;
+  }
+
+  .compact .rank-col + td::before {
+    display: none;
+  }
+
+  .compact td:first-child:not(.rank-col) {
+    display: table-cell;
+    text-align: left;
+    font-size: 13px;
+  }
+
+  .compact td:first-child:not(.rank-col)::before {
+    display: none;
+  }
+
+  .compact .primary-cell {
+    display: table-cell;
+    text-align: right;
+    font-size: 13px;
+  }
+
+  .compact .primary-cell::before {
+    display: none;
+  }
+
+  .compact .rank-col + td + .meta-cell {
+    display: table-cell;
+  }
+
+  .compact .meta-cell {
+    color: rgba(14, 20, 16, 0.78);
+  }
+
+  .compact .meta-cell::before {
+    position: static;
+  }
+
   .compact .mobile-detail-row {
-    display: table-row;
+    display: none;
   }
 
   .mobile-detail-row td {
-    padding: 0 7px 10px;
+    display: table-cell;
+  }
+
+  .mobile-detail-row td::before {
+    display: none;
   }
 
   .mobile-detail-row details {
     color: rgba(14, 20, 16, 0.7);
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .mobile-detail-row summary {
     width: max-content;
     cursor: pointer;
     color: var(--green-mid);
-    font-weight: 900;
+    font-weight: 800;
     text-transform: uppercase;
   }
 
   .mobile-detail-row details div {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 14px;
-    padding: 8px 0 2px;
+    gap: 6px 12px;
+    padding: 6px 0 2px;
   }
 
   .mobile-detail-row span {
@@ -974,12 +1082,27 @@ td:first-child {
     color: var(--green-mid);
   }
 
-  tfoot td:first-child {
-    font-size: 12px;
+  .compact tfoot {
+    border-top: 2px solid var(--green);
+  }
+
+  .compact tfoot tr {
+    display: table-row;
+    background: var(--chalk);
+  }
+
+  .compact tfoot td:first-child {
+    display: table-cell;
+    font-size: 13px;
+  }
+
+  .compact tfoot td:first-child + td {
+    display: table-cell;
+    font-size: 13px;
   }
 
   .hall-intro p {
-    font-size: 44px;
+    font-size: 38px;
   }
 
   .hof-row {
