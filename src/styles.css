@@ -396,6 +396,26 @@ tbody tr:nth-child(even) {
   background: var(--zebra);
 }
 
+tfoot tr {
+  background: var(--chalk);
+  border-top: 2px solid var(--green);
+  font-weight: 900;
+}
+
+tfoot tr + tr {
+  border-top: 1px solid var(--line);
+}
+
+tfoot td {
+  border-bottom: 0;
+}
+
+tfoot td:first-child {
+  color: var(--green);
+  font-family: "Archivo", "Archivo Local", Impact, sans-serif;
+  text-transform: uppercase;
+}
+
 .mobile-detail-row {
   display: none;
 }

@@ -168,6 +168,7 @@ function DayLeaders({ leaders }) {
 function MatchCard({ match }) {
   const teams = groupBy(match.batting, "team_slot");
   const bowlingTeams = groupBy(match.bowling, "team_slot");
+  const footers = scorecardFooters(match);
   return (
     <article className="match-card">
       <div className="result-hero">
@@ -175,8 +176,8 @@ function MatchCard({ match }) {
         <h3>{matchResultText(match)}</h3>
         {match.has_true_totals && match.team_totals && (
           <p>
-            Team 1 {formatStat(match.team_totals["Team 1"], "integer")} · Team 2{" "}
-            {formatStat(match.team_totals["Team 2"], "integer")}
+            {sideLabel(match, "Team 1")} {formatStat(match.team_totals["Team 1"], "integer")} ·{" "}
+            {sideLabel(match, "Team 2")} {formatStat(match.team_totals["Team 2"], "integer")}
           </p>
         )}
       </div>
@@ -184,9 +185,10 @@ function MatchCard({ match }) {
         {Object.entries(teams).map(([teamSlot, rows]) => (
           <ScorecardBlock
             key={teamSlot}
-            title={`${display(teamSlot)} batting`}
+            title={sideLabel(match, teamSlot)}
             side={rows[0]?.side}
             rows={rows}
+            footerRows={footers.batting.get(teamSlot)}
             columns={[
               ["player", "Player"],
               ["runs", "Runs", "integer"],
@@ -198,9 +200,10 @@ function MatchCard({ match }) {
         {Object.entries(bowlingTeams).map(([teamSlot, rows]) => (
           <ScorecardBlock
             key={`${teamSlot}-bowling`}
-            title={`${display(teamSlot)} bowling`}
+            title={`${sideLabel(match, teamSlot)} bowling`}
             side={rows[0]?.side}
             rows={rows}
+            footerRows={footers.bowling.get(teamSlot)}
             columns={[
               ["player", "Player"],
               ["runs", "Runs", "integer"],
@@ -214,14 +217,14 @@ function MatchCard({ match }) {
   );
 }
 
-function ScorecardBlock({ title, side, rows, columns }) {
+function ScorecardBlock({ title, side, rows, columns, footerRows }) {
   return (
     <details className="scorecard" open>
       <summary>
         <span>{title}</span>
         <span className={side === "Won" ? "side won" : "side"}>{display(side)}</span>
       </summary>
-      <Table rows={rows} columns={columns} compact />
+      <Table rows={rows} columns={columns} footerRows={footerRows} compact />
     </details>
   );
 }
@@ -471,7 +474,7 @@ function LeaderboardTable({ type, rows, compact = false }) {
   );
 }
 
-function Table({ rows, columns, ranked = false, compact = false }) {
+function Table({ rows, columns, ranked = false, compact = false, footerRows = [] }) {
   const optionalColumns = columns.filter(([, , kind]) => kind?.includes("optional"));
   return (
     <div className={compact ? "table-wrap compact" : "table-wrap"}>
@@ -515,6 +518,20 @@ function Table({ rows, columns, ranked = false, compact = false }) {
             </React.Fragment>
           ))}
         </tbody>
+        {footerRows.length > 0 && (
+          <tfoot>
+            {footerRows.map((row) => (
+              <tr key={row.player}>
+                {ranked && <td className="rank-col" />}
+                {columns.map(([key, , kind]) => (
+                  <td key={key} className={cellClass(row[key], kind)} data-label={key}>
+                    {renderCell(row[key], kind)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tfoot>
+        )}
       </table>
     </div>
   );
@@ -695,6 +712,36 @@ function matchResultText(match) {
   if (!match.winning_captain) return "Result not recorded";
   if (match.has_true_totals) return `${match.winning_captain}'s team won by ${formatStat(match.margin, "integer")} runs`;
   return `${match.winning_captain}'s team won`;
+}
+
+function scorecardFooters(match) {
+  const batting = new Map();
+  const bowling = new Map();
+  if (!match.has_true_totals || !Array.isArray(match.innings)) return { batting, bowling };
+
+  for (const innings of match.innings) {
+    batting.set(innings.batting_slot, [
+      { player: "Extras", runs: innings.batting_extras, balls_faced: "", out: "" },
+      { player: "Total", runs: innings.total, balls_faced: "", out: "" },
+    ]);
+    bowling.set(innings.bowling_slot, [
+      { player: "Run Outs", runs: innings.bowling_run_outs, wickets: "", extras: "" },
+      { player: "Total", runs: innings.total, wickets: "", extras: "" },
+    ]);
+  }
+
+  return { batting, bowling };
+}
+
+function sideLabel(match, teamSlot) {
+  const captain = captainForSlot(match, teamSlot);
+  return captain ? `${captain}${captain.endsWith("s") ? "'" : "'s"} team` : display(teamSlot);
+}
+
+function captainForSlot(match, teamSlot) {
+  if (match.winner_slot === teamSlot) return match.winning_captain;
+  if (match.winner_slot && match.winner_slot !== teamSlot) return match.losing_captain;
+  return null;
 }
 
 function renderCell(value, kind = "") {
