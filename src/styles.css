@@ -242,9 +242,14 @@ main {
 
 .section-heading {
   display: flex;
+  min-width: 0;
   align-items: end;
   justify-content: space-between;
   gap: 16px;
+}
+
+.section-heading > div {
+  min-width: 0;
 }
 
 .section-heading h2 {
@@ -318,6 +323,7 @@ main {
 
 .scorecard summary {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -329,7 +335,13 @@ main {
   text-transform: uppercase;
 }
 
+.scorecard summary span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .side {
+  flex: 0 0 auto;
   color: rgba(14, 20, 16, 0.56);
   font-family: "Public Sans", "Public Sans Local", system-ui, sans-serif;
   font-size: 11px;
@@ -365,7 +377,8 @@ table {
 }
 
 .compact table {
-  min-width: 390px;
+  min-width: 0;
+  table-layout: fixed;
 }
 
 th,
@@ -422,6 +435,7 @@ tfoot td:first-child {
 
 td:first-child {
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .rank-col {
@@ -539,7 +553,7 @@ td:first-child {
 
 .hof-row {
   display: grid;
-  grid-template-columns: 58px 1fr auto;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 14px;
@@ -567,6 +581,7 @@ td:first-child {
   font-weight: 900;
   line-height: 0.96;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .hof-metric {
@@ -726,12 +741,25 @@ td:first-child {
 
 .record-header {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 18px;
   color: var(--white);
   background: var(--green);
+}
+
+.record-header > div {
+  min-width: 0;
+}
+
+.record-header span {
+  display: block;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .record-header .eyebrow {
@@ -794,18 +822,114 @@ td:first-child {
 }
 
 @media (max-width: 520px) {
+  .page-shell {
+    padding: 22px 10px 38px;
+  }
+
   .site-header {
     align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .brand img,
+  .brand-fallback {
+    width: 36px;
+    height: 36px;
+  }
+
+  .brand span:last-child {
+    max-width: 230px;
   }
 
   .nav {
     width: 100%;
+    gap: 0;
   }
 
   .nav a {
     flex: 1;
+    padding: 10px 4px;
+    font-size: 11px;
     text-align: center;
+  }
+
+  .page-intro h1 {
+    font-size: 40px;
+  }
+
+  .page-intro p:last-child {
+    font-size: 15px;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .section-heading h2 {
+    font-size: 27px;
+  }
+
+  .day-leaders,
+  .player-search-card {
+    padding: 12px;
+  }
+
+  .tabs {
+    margin-right: -10px;
+    padding-bottom: 2px;
+  }
+
+  .tabs button {
+    padding: 9px 10px;
+    font-size: 11px;
+  }
+
+  .result-hero {
+    padding: 16px 14px;
+  }
+
+  .result-hero h3 {
+    font-size: 32px;
+  }
+
+  .result-hero p:last-child {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .scorecard summary {
+    align-items: flex-start;
+    padding: 12px 10px;
+    font-size: 16px;
+  }
+
+  table {
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  th,
+  td {
+    padding: 9px 7px;
+  }
+
+  th {
+    font-size: 10px;
+    letter-spacing: 0.05em;
+  }
+
+  .rank-col {
+    width: 32px;
+    font-size: 15px;
+  }
+
+  .compact th:first-child,
+  .compact td:first-child {
+    width: 44%;
   }
 
   .compact th.optional,
@@ -818,7 +942,7 @@ td:first-child {
   }
 
   .mobile-detail-row td {
-    padding: 0 12px 10px;
+    padding: 0 7px 10px;
   }
 
   .mobile-detail-row details {
@@ -848,6 +972,68 @@ td:first-child {
 
   .mobile-detail-row strong {
     color: var(--green-mid);
+  }
+
+  tfoot td:first-child {
+    font-size: 12px;
+  }
+
+  .hall-intro p {
+    font-size: 44px;
+  }
+
+  .hof-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .hof-metric {
+    grid-column: 2;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .form-line {
+    width: 78px;
+    height: 34px;
+  }
+
+  .form-line.large {
+    width: 98px;
+    height: 44px;
+  }
+
+  .form-line .bar {
+    width: 5px;
+  }
+
+  .form-line.large .bar {
+    width: 6px;
+  }
+
+  .record-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .record-header h2 {
+    font-size: 34px;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-card {
+    padding: 12px 10px;
+  }
+
+  .stat-card strong {
+    font-size: 21px;
+  }
+
+  .site-footer {
+    flex-direction: column;
   }
 }
 

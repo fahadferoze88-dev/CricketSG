@@ -463,7 +463,7 @@ function StatCard({ label, value, kind = "integer" }) {
   );
 }
 
-function LeaderboardTable({ type, rows, compact = false }) {
+function LeaderboardTable({ type, rows, compact = true }) {
   return (
     <Table
       rows={rows.map((row, index) => ({ rank: index + 1, matches_display: matchCount(row), ...row }))}
