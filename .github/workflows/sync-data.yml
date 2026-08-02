@@ -22,39 +22,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install MEGA CMD
+      - name: Install MEGA downloader
         run: |
-          sudo apt-get update
-          curl -L -o "$RUNNER_TEMP/megacmd.deb" "https://mega.nz/linux/repo/xUbuntu_24.04/amd64/megacmd-xUbuntu_24.04_amd64.deb"
-          sudo apt-get install -y "$RUNNER_TEMP/megacmd.deb"
+          mkdir -p "$RUNNER_TEMP/mega-downloader"
+          cd "$RUNNER_TEMP/mega-downloader"
+          npm init -y
+          npm install megajs@1.3.10
 
-      - name: Download MEGA folder
-        run: |
-          mkdir -p "$RUNNER_TEMP/mega"
-          mega-get "$MEGA_FOLDER_URL" "$RUNNER_TEMP/mega"
-          find "$RUNNER_TEMP/mega" -maxdepth 4 -type f
-
-      - name: Update public data
-        run: |
-          DATA_FILE="$(find "$RUNNER_TEMP/mega" -type f -name 'data.json' | sort | head -n 1)"
-          if [ -z "$DATA_FILE" ]; then
-            echo "No data.json found in MEGA folder."
-            exit 1
-          fi
-
-          node - "$DATA_FILE" <<'NODE'
-          const fs = require("fs");
-          const [source] = process.argv.slice(2);
-          const raw = fs.readFileSync(source, "utf8").replace(/\bNaN\b/g, "null");
-          const data = JSON.parse(raw);
-
-          if (!data.meta || !data.views || !data.players || !data.matches || !data.raw) {
-            throw new Error("Downloaded data.json does not match the expected CricketSG shape.");
-          }
-
-          fs.writeFileSync("public/data.json", JSON.stringify(data));
-          console.log(`Updated public/data.json from schema ${data.meta.schema_version}.`);
-          NODE
+      - name: Download and update public data
+        run: NODE_PATH="$RUNNER_TEMP/mega-downloader/node_modules" node scripts/download-mega-data.cjs
 
       - name: Commit data change
         run: |

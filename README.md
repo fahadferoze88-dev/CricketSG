@@ -28,7 +28,9 @@ The app treats `data.views` as authoritative for Match Day, Season, and Hall of 
 
 ## Automated Data Sync
 
-The GitHub Action in `.github/workflows/sync-data.yml` checks the stable MEGA folder every six hours and can also be run manually from GitHub Actions. It downloads `data.json`, validates the expected CricketSG shape, replaces `public/data.json`, and commits only when the file changed.
+The GitHub Action in `.github/workflows/sync-data.yml` checks the stable MEGA folder every six hours and can also be run manually from GitHub Actions. It downloads `data.json`, accepts either the final web contract or the MEGA `tables` export, converts it into the web-ready shape, replaces `public/data.json`, and commits only when the file changed.
+
+The converter lives in `scripts/download-mega-data.cjs`. If the MEGA folder link changes, update `MEGA_FOLDER_URL` in `.github/workflows/sync-data.yml`.
 
 For this to work, the GitHub repository must allow Actions to write: `Settings` -> `Actions` -> `General` -> `Workflow permissions` -> `Read and write permissions`.
 
