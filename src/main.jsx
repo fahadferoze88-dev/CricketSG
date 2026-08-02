@@ -721,9 +721,17 @@ function matchCount(row) {
 
 function matchResultText(match) {
   if (match.result === "Tie") return "Match tied";
-  if (!match.winning_captain) return "Result not recorded";
-  if (match.has_true_totals) return `${match.winning_captain}'s team won by ${formatStat(match.margin, "integer")} runs`;
-  return `${match.winning_captain}'s team won`;
+  if (!match.winning_captain && !match.winner_slot) return "Result not recorded";
+
+  const winner = match.winner_slot ? sideLabel(match, match.winner_slot) : `${match.winning_captain}'s team`;
+  const loserSlot = match.winner_slot === "Team 1" ? "Team 2" : match.winner_slot === "Team 2" ? "Team 1" : null;
+  const margin =
+    match.margin ??
+    (match.team_totals && loserSlot ? Math.abs(Number(match.team_totals[match.winner_slot]) - Number(match.team_totals[loserSlot])) : null);
+  if (match.has_true_totals && Number.isFinite(margin)) {
+    return `${winner} won by ${formatStat(margin, "integer")} runs`;
+  }
+  return `${winner} won`;
 }
 
 function scorecardFooters(match) {

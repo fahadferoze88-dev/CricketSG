@@ -200,6 +200,7 @@ function convertMatch(row) {
   const hasTrueTotals = Number.isFinite(totals["Team 1"]) && Number.isFinite(totals["Team 2"]);
   const winnerSlot = clean(row.winner_slot) || winnerSlotFromResult(row.result);
   const loserSlot = winnerSlot === "Team 1" ? "Team 2" : winnerSlot === "Team 2" ? "Team 1" : null;
+  const margin = value(row.margin) ?? (winnerSlot && loserSlot && hasTrueTotals ? Math.abs(totals[winnerSlot] - totals[loserSlot]) : null);
   const winningCaptain = winnerSlot === "Team 1" ? clean(row.slot1_captain) : winnerSlot === "Team 2" ? clean(row.slot2_captain) : null;
   const losingCaptain = loserSlot === "Team 1" ? clean(row.slot1_captain) : loserSlot === "Team 2" ? clean(row.slot2_captain) : null;
   const innings = hasTrueTotals ? ["Team 1", "Team 2"].map((battingSlot) => {
@@ -229,7 +230,7 @@ function convertMatch(row) {
     result: clean(row.result),
     team_totals: hasTrueTotals ? totals : null,
     has_true_totals: hasTrueTotals,
-    margin: value(row.margin),
+    margin,
     winner_slot: winnerSlot,
     winner_player_runs: winnerSlot ? playerRuns[winnerSlot] : null,
     loser_player_runs: loserSlot ? playerRuns[loserSlot] : null,
