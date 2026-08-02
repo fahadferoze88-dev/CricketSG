@@ -26,6 +26,12 @@ Replace `public/data.json` with the latest generated CricketOps export, then reb
 
 The app treats `data.views` as authoritative for Match Day, Season, and Hall of Fame pages. It only uses `data.raw` for player-history joins.
 
+## Automated Data Sync
+
+The GitHub Action in `.github/workflows/sync-data.yml` checks the stable MEGA folder every six hours and can also be run manually from GitHub Actions. It downloads `data.json`, validates the expected CricketSG shape, replaces `public/data.json`, and commits only when the file changed.
+
+For this to work, the GitHub repository must allow Actions to write: `Settings` -> `Actions` -> `General` -> `Workflow permissions` -> `Read and write permissions`.
+
 ## Design Tokens
 
 The color palette is defined once in `src/styles.css` under the `:root` CSS custom properties. Keep brand colors there so scorecards, Hall of Fame rows, and negative-score styling stay consistent.

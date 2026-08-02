@@ -1,0 +1,79 @@
+name: Sync data from MEGA
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-data-from-mega
+  cancel-in-progress: false
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+    env:
+      MEGA_FOLDER_URL: "https://mega.nz/folder/rlAWQSLZ#nLAVvNeg05TeqrOGpmf8uQ"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install MEGA downloader
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y megatools
+
+      - name: Download MEGA folder
+        run: |
+          mkdir -p "$RUNNER_TEMP/mega"
+          MEGA_DOWNLOAD_URL="$(node <<'NODE'
+          const url = process.env.MEGA_FOLDER_URL;
+          const match = url.match(/mega\.nz\/folder\/([^#]+)#(.+)$/);
+          if (!match) {
+            console.log(url);
+          } else {
+            console.log(`https://mega.nz/#F!${match[1]}!${match[2]}`);
+          }
+          NODE
+          )"
+          megadl --no-progress --path "$RUNNER_TEMP/mega" "$MEGA_DOWNLOAD_URL"
+          find "$RUNNER_TEMP/mega" -maxdepth 4 -type f
+
+      - name: Update public data
+        run: |
+          DATA_FILE="$(find "$RUNNER_TEMP/mega" -type f -name 'data.json' | sort | head -n 1)"
+          if [ -z "$DATA_FILE" ]; then
+            echo "No data.json found in MEGA folder."
+            exit 1
+          fi
+
+          node - "$DATA_FILE" <<'NODE'
+          const fs = require("fs");
+          const [source] = process.argv.slice(2);
+          const raw = fs.readFileSync(source, "utf8").replace(/\bNaN\b/g, "null");
+          const data = JSON.parse(raw);
+
+          if (!data.meta || !data.views || !data.players || !data.matches || !data.raw) {
+            throw new Error("Downloaded data.json does not match the expected CricketSG shape.");
+          }
+
+          fs.writeFileSync("public/data.json", JSON.stringify(data));
+          console.log(`Updated public/data.json from schema ${data.meta.schema_version}.`);
+          NODE
+
+      - name: Commit data change
+        run: |
+          if git diff --quiet -- public/data.json; then
+            echo "public/data.json is already current."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data.json
+          git commit -m "data: sync latest stats"
+          git push
