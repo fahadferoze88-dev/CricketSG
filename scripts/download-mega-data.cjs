@@ -9,9 +9,9 @@ const CONFIG = {
   hall_of_fame_min_matches: 60,
   hall_of_fame_top_n: 10,
   player_history_min_matches: 20,
-  season_leaderboard_min_matches: 2,
-  mvp_min_matches_season: 2,
-  mvp_min_matches_career: 60,
+  season_leaderboard_min_matches: 4,
+  mvp_min_matches_season: 4,
+  mvp_min_matches_career: 20,
   match_day_min_matches: 1,
   recent_match_days: 2,
   form_line_innings: 10,
@@ -23,6 +23,12 @@ main().catch((error) => {
 });
 
 async function main() {
+  if (process.env.SOURCE_PATH) {
+    const data = parseJson(fs.readFileSync(process.env.SOURCE_PATH, "utf8"));
+    writeSupportedData(data);
+    return;
+  }
+
   const root = await loadMegaFolder(MEGA_FOLDER_URL);
   const candidates = collectFiles(root).filter((file) => file.name === "data.json");
   if (candidates.length === 0) throw new Error("No data.json found in the MEGA folder.");
@@ -33,16 +39,7 @@ async function main() {
     const data = parseJson(raw);
     inspected.push({ name: candidate.name, size: candidate.size, keys: Object.keys(data).join(", ") });
 
-    if (isWebContract(data)) {
-      writeData(data);
-      console.log(`Updated public/data.json from web contract schema ${data.meta.schema_version}.`);
-      return;
-    }
-
-    if (isTablesExport(data)) {
-      const converted = convertTablesExport(data);
-      writeData(converted);
-      console.log(`Updated public/data.json from MEGA tables export (${converted.meta.current_season}).`);
+    if (writeSupportedData(data)) {
       return;
     }
   }
@@ -50,6 +47,23 @@ async function main() {
   console.error("Found data.json file(s), but none matched a supported CricketSG format:");
   for (const item of inspected) console.error(`- ${item.name} (${item.size} bytes): ${item.keys}`);
   throw new Error("Unsupported data.json format.");
+}
+
+function writeSupportedData(data) {
+  if (isWebContract(data)) {
+    writeData(data);
+    console.log(`Updated public/data.json from web contract schema ${data.meta.schema_version}.`);
+    return true;
+  }
+
+  if (isTablesExport(data)) {
+    const converted = convertTablesExport(data);
+    writeData(converted);
+    console.log(`Updated public/data.json from MEGA tables export (${converted.meta.current_season}).`);
+    return true;
+  }
+
+  return false;
 }
 
 function loadMegaFolder(url) {
@@ -300,7 +314,7 @@ function buildSeasonView(season, battingRows, bowlingRows, fieldingRows, matches
 
 function buildHallOfFame(battingRows, bowlingRows, fieldingRows) {
   return {
-    batting: battingLeaderboard(battingRows, CONFIG.hall_of_fame_min_matches).slice(0, CONFIG.hall_of_fame_top_n),
+    batting: battingLeaderboard(battingRows, CONFIG.hall_of_fame_min_matches, "runs_per_innings").slice(0, CONFIG.hall_of_fame_top_n),
     bowling: bowlingLeaderboard(bowlingRows, CONFIG.hall_of_fame_min_matches).slice(0, CONFIG.hall_of_fame_top_n),
     fielding: fieldingLeaderboard(fieldingRows, CONFIG.hall_of_fame_min_matches).slice(0, CONFIG.hall_of_fame_top_n),
     mvp: mvpLeaderboard(battingRows, bowlingRows, CONFIG.mvp_min_matches_career).slice(0, CONFIG.hall_of_fame_top_n),
@@ -336,11 +350,14 @@ function buildPlayerRecords(players, battingRows, bowlingRows, fieldingRows, mat
   return records;
 }
 
-function battingLeaderboard(rows, minMatches) {
-  return Object.entries(groupBy(rows, (row) => row.player))
+function battingLeaderboard(rows, minMatches, sortBy = "runs") {
+  const sorted = Object.entries(groupBy(rows, (row) => row.player))
     .map(([, playerRows]) => battingStats(playerRows))
     .filter((row) => row.matches >= minMatches)
-    .sort((a, b) => b.runs - a.runs || a.player.localeCompare(b.player));
+  if (sortBy === "runs_per_innings") {
+    return sorted.sort((a, b) => b.runs_per_innings - a.runs_per_innings || b.runs - a.runs || a.player.localeCompare(b.player));
+  }
+  return sorted.sort((a, b) => b.runs - a.runs || a.player.localeCompare(b.player));
 }
 
 function bowlingLeaderboard(rows, minMatches) {
