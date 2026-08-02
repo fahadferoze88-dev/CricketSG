@@ -22,25 +22,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install MEGA downloader
+      - name: Install MEGA CMD
         run: |
           sudo apt-get update
-          sudo apt-get install -y megatools
+          curl -L -o "$RUNNER_TEMP/megacmd.deb" "https://mega.nz/linux/repo/xUbuntu_24.04/amd64/megacmd-xUbuntu_24.04_amd64.deb"
+          sudo apt-get install -y "$RUNNER_TEMP/megacmd.deb"
 
       - name: Download MEGA folder
         run: |
           mkdir -p "$RUNNER_TEMP/mega"
-          MEGA_DOWNLOAD_URL="$(node <<'NODE'
-          const url = process.env.MEGA_FOLDER_URL;
-          const match = url.match(/mega\.nz\/folder\/([^#]+)#(.+)$/);
-          if (!match) {
-            console.log(url);
-          } else {
-            console.log(`https://mega.nz/#F!${match[1]}!${match[2]}`);
-          }
-          NODE
-          )"
-          megadl --no-progress --path "$RUNNER_TEMP/mega" "$MEGA_DOWNLOAD_URL"
+          mega-get "$MEGA_FOLDER_URL" "$RUNNER_TEMP/mega"
           find "$RUNNER_TEMP/mega" -maxdepth 4 -type f
 
       - name: Update public data
