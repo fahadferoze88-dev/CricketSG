@@ -1,0 +1,47 @@
+name: Cricket SG statistics review
+
+# Manual review channel only. Production statistics require a separate approved cutover.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cricket-sg-review-statistics
+  cancel-in-progress: false
+
+jobs:
+  publish-review:
+    if: github.repository == 'fahadferoze88-dev/CricketSG' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: cricket-statistics-review
+    steps:
+      - name: Check out the reviewed default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Verify publisher and finalized-score projection
+        run: node --test standalone/publish-statistics.test.mjs standalone/finalized-stats.test.mjs standalone/statistics-preview.test.mjs
+
+      - name: Verify the checked-in historical artifact
+        run: |
+          node --input-type=module <<'NODE'
+          import { readPinnedHistory } from './standalone/publish-statistics.mjs';
+          await readPinnedHistory('standalone/history.json.gz', 'standalone/history-source.json');
+          console.log('Pinned historical review artifact verified.');
+          NODE
+
+      - name: Capture immutable results and atomically replace the review snapshot
+        env:
+          CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
+        run: node standalone/publish-statistics.mjs standalone/history.json.gz standalone/history-source.json
+
+      # No schedule, primary snapshot, public deployment, mutable checkpoint export or artifact upload.
