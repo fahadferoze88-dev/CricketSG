@@ -4,5 +4,15 @@
   "season": "S8_2026",
   "gzip_sha256": "26ac8c45f7ef87d29f44b960edbcbe9e37b022ad46a1b7647ca12752c1a1e7db",
   "source_version": 1,
-  "review_only": true
+  "review_only": false,
+  "season_confirmed": true,
+  "appearance_count_policy": "ammar-career-count-28-fielding-record-held",
+  "primary_approval": {
+    "approved": true,
+    "source_version": 1,
+    "history_gzip_sha256": "26ac8c45f7ef87d29f44b960edbcbe9e37b022ad46a1b7647ca12752c1a1e7db",
+    "season": "S8_2026",
+    "appearance_count_policy": "ammar-career-count-28-fielding-record-held",
+    "approved_at": "2026-10-03T06:39:56.196530Z"
+  }
 }

@@ -1,8 +1,10 @@
 name: Cricket SG encrypted backup
 
-# Manual until hosted credentials, a real MEGA round trip and an isolated D1 restore pass.
+# Hourly catch-up; unchanged data skips upload until the last verified archive is 24 hours old.
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
 
 permissions:
   contents: read
