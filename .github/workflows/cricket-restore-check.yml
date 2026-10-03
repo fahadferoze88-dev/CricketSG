@@ -1,0 +1,45 @@
+name: Cricket SG isolated restore check
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_database:
+        description: 'UUID of an explicitly created, empty disposable D1 database (never the scorer database)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cricket-sg-isolated-restore-check
+  cancel-in-progress: false
+
+jobs:
+  restore-check:
+    if: github.repository == 'fahadferoze88-dev/CricketSG' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: cricket-backup
+    steps:
+      - name: Check out the reviewed default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Check the synthetic fixture and restore locally
+        run: node standalone/backup-cloud-check.mjs --local-check
+
+      - name: Restore synthetic large values into the explicit empty target and verify
+        env:
+          RESTORE_TARGET_DATABASE: ${{ inputs.target_database }}
+          CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
+        run: node standalone/backup-cloud-check.mjs
+
+      # Manual only: no source export, database creation/deletion, secret changes, artifact uploads or cleanup.
+      # A failed or successful target stays visible for review and explicit operator cleanup.
