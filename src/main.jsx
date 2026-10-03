@@ -16,6 +16,11 @@ const TABS = [
   { id: "mvp", label: "MVP" },
 ];
 
+const reviewStatistics = new URLSearchParams(window.location.search).get("stats") === "review";
+const statisticsUrl = reviewStatistics
+  ? "https://cricket-sg-stats-beta.cricket-sg-fahad.workers.dev/review/data.json"
+  : "/data.json";
+
 function App() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -26,7 +31,7 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/data.json", { cache: "no-store" })
+    fetch(statisticsUrl, { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error(`data.json returned ${response.status}`);
         return response.json();
@@ -48,7 +53,8 @@ function App() {
         <section className="notice-card" role="alert">
           <p className="eyebrow">Data unavailable</p>
           <h1>Could not load the scorebook.</h1>
-          <p>Refresh the page, or check that <strong>/public/data.json</strong> exists before deploying.</p>
+          <p>Please retry in a moment. Your saved scores are unaffected.</p>
+          {reviewStatistics && <p><a href="/">Open the current statistics</a></p>}
           <p className="muted">{error}</p>
         </section>
       </Shell>
@@ -68,6 +74,7 @@ function App() {
 
   return (
     <Shell page={page} setPage={setPage} data={data}>
+      {data.meta?.review_only && <section className="notice-card" role="status"><strong>Statistics review — not official</strong><p>Historical records are being checked. Missing team totals are not estimated.</p><a href="/">Back to current statistics</a></section>}
       {page === "matchday" && <MatchDayPage data={data} />}
       {page === "season" && <SeasonPage data={data} />}
       {page === "hall" && <HallPage data={data} />}
@@ -101,6 +108,7 @@ function Shell({ children, page, setPage, data }) {
       <main>{children}</main>
       <footer className="site-footer">
         <span>Cricket SG Central</span>
+        <a href="https://cricket-sg-beta.cricket-sg-fahad.workers.dev/">Open scorer</a>
         {data && <span>Updated {formatDateTime(data.meta.generated_at)}</span>}
       </footer>
     </>
@@ -745,6 +753,7 @@ function scorecardFooters(match) {
       { player: "Total", runs: innings.total, balls_faced: "", out: "" },
     ]);
     bowling.set(innings.bowling_slot, [
+      ...(Number.isFinite(innings.bowling_leg_byes) ? [{ player: "Leg byes", runs: innings.bowling_leg_byes, wickets: "", extras: "" }] : []),
       { player: "Run Outs", runs: innings.bowling_run_outs, wickets: "", extras: "" },
       { player: "Total", runs: innings.total, wickets: "", extras: "" },
     ]);

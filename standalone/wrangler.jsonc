@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "cricket-sg-beta",
+  "account_id": "590b0bb00c33381ac900eebd768a2641",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-03-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "TEAM_DOMAIN": "https://divine-snowflake-82f2.cloudflareaccess.com",
+    "POLICY_AUD": "8ce27b01f85a68d20db20a9db8ae983e556b36d6efbfbd7ce2b964fc75eedf78"
+  },
+  "assets": {
+    "directory": "../testing",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cricket-sg-beta",
+      "database_id": "ab93c103-3ba6-47c7-acc1-41e1695dc8df"
+    }
+  ]
+}

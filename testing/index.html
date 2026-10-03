@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#102b22" />
+    <title>Cricket SG beta scorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="saveWarning" class="save-warning" role="alert" hidden></div>
+    <p id="offlineStatus" class="offline-status" role="status">Preparing offline recovery…</p>
+    <div class="cloud-status"><span id="cloudStatus" role="status">Cloud connection pending</span> <button type="button" id="syncCloudButton">Sync now</button> <a href="./" target="_blank" rel="noopener">Sign in</a></div>
+    <main class="setup-shell" id="setupView" aria-label="Set up a cricket match">
+      <header class="setup-header">
+        <div class="brand-mark" aria-hidden="true">C</div>
+        <div><p class="overline">Cricket SG beta</p><h1>Set up match</h1></div>
+      </header>
+      <button type="button" id="setupSavedMatches" class="scenario-card">Open saved matches or restore a recovery file</button>
+      <button type="button" id="setupCloudMatches" class="scenario-card">Open cloud matches</button>
+      <button type="button" id="playersButton" class="scenario-card">Players · add or manage</button>
+      <button type="button" id="copyLineup" class="scenario-card">Copy previous lineup</button>
+      <form id="setupForm">
+        <section class="setup-card setup-details">
+          <div><label for="matchDate">Match date</label><input id="matchDate" type="date" required /></div>
+          <div><label for="matchNumber">Match number that day</label><input id="matchNumber" type="number" min="1" max="99" value="1" required /></div>
+          <div><label for="matchName">Match name</label><input id="matchName" value="Friday Night Match" required /></div>
+          <div><label for="battingFirst">Batting first</label><select id="battingFirst"><option value="teamA">Team A</option><option value="teamB">Team B</option></select></div>
+        </section>
+        <div class="setup-teams">
+          <section class="setup-card">
+            <label for="teamAName">Team A name</label><input id="teamAName" value="Team Green" required />
+            <p class="form-label">Eight players</p><div class="roster-inputs" id="teamARoster"></div><label for="teamACaptain">Captain</label><select id="teamACaptain" required><option value="">Choose captain</option></select>
+          </section>
+          <section class="setup-card">
+            <label for="teamBName">Team B name</label><input id="teamBName" value="Team Gold" required />
+            <p class="form-label">Eight players</p><div class="roster-inputs" id="teamBRoster"></div><label for="teamBCaptain">Captain</label><select id="teamBCaptain" required><option value="">Choose captain</option></select>
+          </section>
+        </div>
+        <div class="setup-actions"><p>Saved on this device after every scoring action.</p><button class="primary-action" type="submit">Start match</button></div>
+      </form>
+    </main>
+
+    <main class="app-shell" id="liveView" aria-label="Cricket SG beta scorer" hidden>
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">C</div>
+          <div>
+            <p>Cricket SG Central</p>
+            <strong id="matchHeader">Match</strong>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="sync-state" type="button" id="syncButton" aria-label="Local save status">
+            <span class="sync-dot"></span>
+            <span id="syncText">Saved locally</span>
+          </button>
+          <button class="undo-button" type="button" id="undoButton" disabled>
+            <span aria-hidden="true">↶</span> Undo
+          </button>
+          <button class="icon-button" type="button" id="scenarioButton" aria-label="Open match controls">•••</button>
+        </div>
+      </header>
+
+      <section class="score-hero" aria-label="Current score">
+        <div class="score-main">
+          <p class="overline" id="inningsLabel">First innings</p>
+          <div class="score-line">
+            <strong id="teamScore">47</strong>
+            <span id="oversDisplay">6.2 / 16 overs</span>
+          </div>
+        </div>
+        <div class="hero-metrics">
+          <div>
+            <span>Pair</span>
+            <strong id="pairLabel">2 of 4</strong>
+          </div>
+          <div>
+            <span>Pair score</span>
+            <strong id="pairScore">25</strong>
+          </div>
+          <div>
+            <span>Run rate</span>
+            <strong id="runRate">7.42</strong>
+          </div>
+          <div>
+            <span>This over</span>
+            <strong id="overRuns">3</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="context-grid">
+        <div class="players-panel">
+          <div class="section-label">
+            <span>Current pair</span>
+            <button type="button" class="text-button" id="swapButton">Swap strike</button>
+          </div>
+          <p class="batter-help">Tap who faces next · no automatic strike changes</p>
+          <button type="button" class="player-card on-strike" id="strikerCard">
+            <span class="strike-marker">On strike</span>
+            <strong id="strikerName">Bilal</strong>
+            <span><b id="strikerRuns">14</b> runs</span>
+          </button>
+          <button type="button" class="player-card" id="nonStrikerCard">
+            <span class="strike-marker">Non-striker</span>
+            <strong id="nonStrikerName">Aasim</strong>
+            <span><b id="nonStrikerRuns">11</b> runs</span>
+          </button>
+          <p class="batter-help" id="dotStatus" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="bowler-panel">
+          <div class="section-label"><span>Current bowler</span><span>Tap to change</span></div>
+          <button type="button" class="bowler-card" id="bowlerButton">
+            <div class="avatar" id="bowlerInitials">DA</div>
+            <div>
+              <strong id="bowlerName">Daniyal</strong>
+              <span id="bowlerFigures">0.2 overs · 3 runs · 0 wickets</span>
+            </div>
+            <span class="chevron" aria-hidden="true">›</span>
+          </button>
+          <div class="rotation-row">
+            <div>
+              <span>Rotation</span>
+              <strong id="rotationStatus">6 of 16 overs complete</strong>
+            </div>
+            <div class="rotation-dots" id="rotationDots" aria-label="Bowling rotation status"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="recent-panel" aria-label="Current over">
+        <div class="section-label">
+          <span id="currentOverLabel">Over 7</span>
+          <button type="button" class="text-button" id="historyButton">Full history</button>
+        </div>
+        <div class="ball-strip" id="ballStrip"></div>
+      </section>
+
+      <section class="score-pad" aria-label="Score this ball">
+        <div class="run-grid" id="runGrid">
+          <button class="score-key" type="button" data-code="0"><strong>0</strong><span>Dot</span></button>
+          <button class="score-key" type="button" data-code="1"><strong>1</strong><span>Run</span></button>
+          <button class="score-key" type="button" data-code="2"><strong>2</strong><span>Runs</span></button>
+          <button class="score-key" type="button" data-code="3"><strong>3</strong><span>Runs</span></button>
+          <button class="score-key" type="button" data-code="4"><strong>4</strong><span>Runs</span></button>
+          <button class="score-key" type="button" data-score-code="5F"><strong>5F</strong><span>5 runs</span></button>
+          <button class="score-key" type="button" data-score-code="7S"><strong>7S</strong><span>7 runs</span></button>
+          <button class="score-key more-key" type="button" id="moreButton"><strong>More</strong><span>Coded scores</span></button>
+        </div>
+        <div class="event-grid">
+          <button class="event-key extra" type="button" id="extraButton"><strong>Extra</strong><span>Wide, no ball or leg bye</span></button>
+          <button class="event-key dropped" type="button" id="droppedButton"><strong>Dropped</strong><span>Fielding event</span></button>
+          <button class="event-key wicket" type="button" id="wicketButton"><strong>Wicket</strong><span>−5 runs</span></button>
+        </div>
+      </section>
+    </main>
+
+    <div class="scrim" id="scrim" hidden></div>
+
+    <section class="sheet" id="moreSheet" aria-label="Coded scoring outcomes" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Batter outcome</p><h2>More scores</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <p class="sheet-note">Ordered by use in the supplied completed match, then by the template list.</p>
+      <div class="code-grid" id="codeGrid"></div>
+    </section>
+
+    <section class="sheet" id="extraSheet" aria-label="Record an extra" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Ball event</p><h2>Record extra</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <div class="form-section">
+        <span class="form-label">Type</span>
+        <div class="choice-row three" id="extraTypeChoices">
+          <button type="button" class="choice active" data-value="Wide">Wide</button>
+          <button type="button" class="choice" data-value="No ball">No ball</button>
+          <button type="button" class="choice" data-value="Leg bye">Leg bye</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <span class="form-label">Extra runs</span>
+        <div class="choice-row" id="extraRunChoices">
+          <button type="button" class="choice" data-value="1">1</button>
+          <button type="button" class="choice active" data-value="2">2</button>
+          <button type="button" class="choice" data-value="3">3</button>
+          <button type="button" class="choice" data-value="4">4</button>
+          <button type="button" class="choice" data-value="5" data-leg-bye-only hidden>5</button>
+          <button type="button" class="choice" data-value="6" data-leg-bye-only hidden>6</button>
+          <button type="button" class="choice" data-value="7" data-leg-bye-only hidden>7</button>
+          <button type="button" class="choice" data-value="8" data-leg-bye-only hidden>8</button>
+        </div>
+      </div>
+      <div class="form-section" id="extraBatterSection">
+        <span class="form-label">Batter runs on the same delivery</span>
+        <div class="choice-row compact" id="extraBatterChoices">
+          <button type="button" class="choice active" data-value="0">0</button>
+          <button type="button" class="choice" data-value="1">1</button>
+          <button type="button" class="choice" data-value="2">2</button>
+          <button type="button" class="choice" data-value="3">3</button>
+          <button type="button" class="choice" data-value="4">4</button>
+        </div>
+      </div>
+      <div class="info-callout" id="extraRule">In overs 1–15, this consumes the current ball.</div>
+      <button type="button" class="primary-action" id="saveExtra">Save extra</button>
+    </section>
+
+    <section class="sheet" id="pairSheet" aria-label="Choose the next batting pair" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Batting order</p><h2>Choose next pair</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <p class="sheet-note">Pairs are not predetermined. Choose any two players who have not batted yet; the first player selected starts on strike.</p>
+      <div class="pair-choice-grid" id="pairChoices"></div>
+      <div class="info-callout" id="pairSelectionStatus">Select the striker first, then the non-striker.</div>
+      <button type="button" class="primary-action" id="savePair" disabled>Start next pair</button>
+    </section>
+
+    <section class="sheet wicket-sheet" id="wicketSheet" aria-label="Record a dismissal" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Ball event</p><h2>Record wicket</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <div class="wicket-layout">
+        <div class="form-section">
+          <span class="form-label">Dismissal</span>
+          <div class="choice-row wrap" id="dismissalChoices">
+            <button type="button" class="choice active" data-value="Catch">Catch</button>
+            <button type="button" class="choice" data-value="Run Out">Run Out</button>
+            <button type="button" class="choice" data-value="Bowled">Bowled</button>
+            <button type="button" class="choice" data-value="Stumped">Stumped</button>
+            <button type="button" class="choice" data-value="Out-Other">Out-Other</button>
+          </div>
+        </div>
+        <div class="form-section" id="penalizedSection">
+          <span class="form-label">Player penalised</span>
+          <div class="choice-row" id="penalizedChoices"></div>
+        </div>
+        <div class="form-section" id="fielderSection">
+          <span class="form-label">Fielder</span>
+          <select id="fielderSelect" aria-label="Fielder"></select>
+        </div>
+        <div class="form-section">
+          <span class="form-label">Runs completed</span>
+          <div class="choice-row compact" id="wicketRunChoices">
+            <button type="button" class="choice active" data-value="0">0</button>
+            <button type="button" class="choice" data-value="1">1</button>
+            <button type="button" class="choice" data-value="2">2</button>
+            <button type="button" class="choice" data-value="3">3</button>
+          </div>
+        </div>
+        <div class="wicket-extra-grid">
+          <div class="form-section">
+            <label class="form-label" for="wicketExtraType">Extra on this delivery</label>
+            <select id="wicketExtraType"><option value="">None</option><option>Wide</option><option>No ball</option></select>
+          </div>
+          <div class="form-section">
+            <label class="form-label" for="wicketExtraRuns">Extra runs</label>
+            <select id="wicketExtraRuns"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="next-striker" id="nextStrikerNote"></div>
+      <button type="button" class="primary-action danger" id="saveWicket">Record wicket · −5</button>
+    </section>
+
+    <section class="sheet" id="droppedSheet" aria-label="Record a dropped catch" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Fielding event</p><h2>Dropped catch</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <div class="form-section">
+        <span class="form-label">Event</span>
+        <div class="choice-row" id="dropTypeChoices">
+          <button type="button" class="choice active" data-value="Dropped">Dropped</button>
+          <button type="button" class="choice" data-value="Dropped-Other">Dropped-Other</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <span class="form-label">Fielder</span>
+        <select id="dropFielderSelect" aria-label="Fielder who dropped the catch"></select>
+      </div>
+      <div class="form-section">
+        <span class="form-label">Batter outcome</span>
+        <div class="choice-row compact" id="dropRunChoices">
+          <button type="button" class="choice active" data-value="0">0</button>
+          <button type="button" class="choice" data-value="1">1</button>
+          <button type="button" class="choice" data-value="2">2</button>
+          <button type="button" class="choice" data-value="3">3</button>
+          <button type="button" class="choice" data-value="4">4</button>
+        </div>
+      </div>
+      <button type="button" class="primary-action" id="saveDropped">Save fielding event</button>
+    </section>
+
+    <section class="sheet" id="bowlerSheet" aria-label="Choose bowler" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Over <span id="bowlerOverNumber">7</span></p><h2>Choose bowler</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <p class="sheet-note">The scorer chooses. Players who have completed two overs are clearly marked.</p>
+      <div class="roster-list" id="bowlerList"></div>
+    </section>
+
+    <section class="sheet" id="historySheet" aria-label="Ball history" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Audit trail</p><h2>Ball history</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <label for="historyInnings">Innings</label><select id="historyInnings"><option value="1">First innings</option><option value="2">Second innings</option></select>
+      <div class="history-list" id="historyList"></div>
+    </section>
+
+    <section class="sheet" id="scenarioSheet" aria-label="Match controls" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="overline">Testing scorer</p><h2>Match controls</h2></div>
+        <button type="button" class="close-button" data-close>Close</button>
+      </div>
+      <p id="matchStatusText" role="status">Playing</p>
+      <button type="button" id="matchPlayersButton" class="scenario-card">Players</button>
+      <button type="button" id="shortenMatch" class="scenario-card">Finish shortened match</button>
+      <button type="button" id="abandonMatch" class="scenario-card">Mark abandoned · keep performances</button>
+      <button type="button" id="reopenMatch" class="scenario-card">Reopen match for scoring</button>
+      <button type="button" id="finalizeMatch" class="scenario-card">Verify and finalize cloud result</button>
+      <button type="button" class="scenario-card" id="exportMatch"><strong>Download match data</strong><span>JSON event log and score summary</span></button>
+      <button type="button" class="scenario-card" id="cloudMatchesButton"><strong>Cloud matches</strong><span>Resume on this device or take over from another phone</span></button>
+      <button type="button" class="scenario-card" id="savedMatchesButton"><strong>Saved matches</strong><span>Resume a match or restore a recovery file</span></button>
+      <button type="button" class="scenario-card" id="newMatch"><strong>Start a new match</strong><span>Keeps this match in Saved matches on this device</span></button>
+    </section>
+
+    <section class="sheet" id="savedMatchesSheet" aria-label="Saved matches" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><h2>Saved matches</h2><button type="button" class="close-button" data-close>Close</button></div>
+      <p class="sheet-note">Saved on this device. Check Cloud saved before switching phones.</p>
+      <p id="savedMatchesEmpty" class="sheet-note">No saved matches yet.</p>
+      <div id="savedMatches"></div>
+      <label class="scenario-card" for="importRecovery"><strong>Restore a recovery file</strong><span>Opens a separate copy and keeps existing matches</span></label>
+      <input id="importRecovery" type="file" accept="application/json,.json" aria-label="Choose match recovery file" />
+    </section>
+
+    <section class="sheet" id="cloudMatchesSheet" aria-label="Cloud matches" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><h2>Cloud matches</h2><button type="button" class="close-button" data-close>Close</button></div>
+      <p class="sheet-note">Latest 200 beta matches. Before handing over, check the old phone says Cloud saved.</p>
+      <div id="cloudMatches"></div>
+    </section>
+    <section class="sheet" id="inningsSheet" aria-label="Innings complete" aria-hidden="true">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><div><p class="overline">Innings complete</p><h2 id="inningsCompleteTitle">96 balls recorded</h2></div></div>
+      <div class="completion-score"><strong id="completedScore">0</strong><span id="completedTeam">Team</span></div>
+      <p class="sheet-note" id="inningsCompleteNote"></p>
+      <button type="button" class="primary-action" id="nextInnings">Start second innings</button>
+      <button type="button" class="primary-action secondary-action" id="finishMatch" hidden>View match result</button>
+    </section>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./storage.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

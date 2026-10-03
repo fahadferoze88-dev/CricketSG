@@ -1,0 +1,14 @@
+node_modules/
+.wrangler/
+.env*
+.dev.vars*
+
+source-check/
+
+__pycache__/
+
+# Local scorer provisioning and recovery evidence are never public.
+seed-players.sql
+*.csgbackup
+*.sqlite
+*.db

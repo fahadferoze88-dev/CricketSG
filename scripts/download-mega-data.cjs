@@ -1,6 +1,5 @@
 const fs = require("fs");
 const path = require("path");
-const mega = require("megajs");
 
 const MEGA_FOLDER_URL = process.env.MEGA_FOLDER_URL || "https://mega.nz/folder/rlAWQSLZ#nLAVvNeg05TeqrOGpmf8uQ";
 const OUTPUT_PATH = process.env.OUTPUT_PATH || path.join(process.cwd(), "public", "data.json");
@@ -17,7 +16,7 @@ const CONFIG = {
   form_line_innings: 10,
 };
 
-main().catch((error) => {
+if (require.main === module) main().catch((error) => {
   console.error(error.message);
   process.exit(1);
 });
@@ -67,6 +66,7 @@ function writeSupportedData(data) {
 }
 
 function loadMegaFolder(url) {
+  const mega = require("megajs");
   return new Promise((resolve, reject) => {
     const folder = mega.File.fromURL(url);
     folder.loadAttributes((error, file) => (error ? reject(error) : resolve(file)));
@@ -110,7 +110,7 @@ function validateWebContract(data) {
   if (!isWebContract(data)) throw new Error("Converted data does not match the expected CricketSG web contract.");
 }
 
-function convertTablesExport(source) {
+function convertTablesExport(source, { includeUnknownTotals = false } = {}) {
   const tables = source.tables;
   const matches = tables.matches.map((match) => convertMatch(match));
   const matchesById = new Map(matches.map((match) => [match.id, match]));
@@ -163,7 +163,7 @@ function convertTablesExport(source) {
   });
 
   const season = source.season;
-  const matchGroups = groupBy(matches.filter((match) => hasDate(match.date) && match.has_true_totals), (match) => match.date);
+  const matchGroups = groupBy(matches.filter((match) => hasDate(match.date) && (includeUnknownTotals || match.has_true_totals)), (match) => match.date);
   const recentDates = Object.keys(matchGroups).sort().slice(-CONFIG.recent_match_days);
   const recentDays = recentDates.map((date) => buildRecentDay(date, matchGroups[date], battingRows, bowlingRows, fieldingRows));
   const playerRecords = buildPlayerRecords(tables.players, battingRows, bowlingRows, fieldingRows, matchesById);
@@ -219,6 +219,7 @@ function convertMatch(row) {
   const losingCaptain = loserSlot === "Team 1" ? clean(row.slot1_captain) : loserSlot === "Team 2" ? clean(row.slot2_captain) : null;
   const innings = hasTrueTotals ? ["Team 1", "Team 2"].map((battingSlot) => {
     const bowlingSlot = battingSlot === "Team 1" ? "Team 2" : "Team 1";
+    const prefix = battingSlot === "Team 1" ? "slot1" : "slot2";
     const battingPlayerRuns = value(playerRuns[battingSlot]);
     const bowlingPlayerRuns = null;
     return {
@@ -229,6 +230,10 @@ function convertMatch(row) {
       batting_extras: totals[battingSlot] - safeNumber(battingPlayerRuns),
       bowling_player_runs: bowlingPlayerRuns,
       bowling_run_outs: null,
+      ...(Number.isFinite(row[`${prefix}_leg_byes`]) && Number.isFinite(row[`${prefix}_run_out_penalty`]) ? {
+        bowling_leg_byes: row[`${prefix}_leg_byes`],
+        bowling_run_outs: row[`${prefix}_run_out_penalty`],
+      } : {}),
     };
   }) : [];
 
@@ -237,8 +242,8 @@ function convertMatch(row) {
     date: String(row.date || ""),
     season: clean(row.season),
     competition: clean(row.competition),
-    winning_captain: winningCaptain,
-    losing_captain: losingCaptain,
+    winning_captain: winningCaptain ?? clean(row.winning_captain),
+    losing_captain: losingCaptain ?? clean(row.losing_captain),
     winner_runs: winnerSlot ? totals[winnerSlot] : null,
     loser_runs: loserSlot ? totals[loserSlot] : null,
     result: clean(row.result),
@@ -246,8 +251,8 @@ function convertMatch(row) {
     has_true_totals: hasTrueTotals,
     margin,
     winner_slot: winnerSlot,
-    winner_player_runs: winnerSlot ? playerRuns[winnerSlot] : null,
-    loser_player_runs: loserSlot ? playerRuns[loserSlot] : null,
+    winner_player_runs: winnerSlot ? playerRuns[winnerSlot] : value(row.winner_player_runs),
+    loser_player_runs: loserSlot ? playerRuns[loserSlot] : value(row.loser_player_runs),
     innings,
   };
 }
@@ -272,8 +277,9 @@ function buildRecentDay(date, matches, battingRows, bowlingRows, fieldingRows) {
       has_true_totals: match.has_true_totals,
       margin: match.margin,
       winner_slot: match.winner_slot,
+      result: match.result,
       batting: battingRows.filter((row) => row.match === match.id).sort(bySeq).map(stripMatchSeq),
-      bowling: bowlingRows.filter((row) => row.match === match.id).sort(bySeq).map(stripMatchSeq),
+      bowling: bowlingRows.filter((row) => row.match === match.id).sort(bySeq).map((row) => ({ ...stripMatchSeq(row), extras: row.wides })),
       innings: buildInnings(
         match,
         battingRows.filter((row) => row.match === match.id),
@@ -295,7 +301,7 @@ function buildInnings(match, matchBattingRows, matchBowlingRows) {
       batting_player_runs: battingPlayerRuns,
       batting_extras: innings.total - battingPlayerRuns,
       bowling_player_runs: bowlerRuns,
-      bowling_run_outs: totalBowlingBalls > 0 ? innings.total - bowlerRuns : null,
+      bowling_run_outs: Number.isFinite(innings.bowling_leg_byes) ? innings.bowling_run_outs : totalBowlingBalls > 0 ? innings.total - bowlerRuns : null,
     };
   });
 }
@@ -322,7 +328,7 @@ function buildHallOfFame(battingRows, bowlingRows, fieldingRows) {
 }
 
 function buildPlayerRecords(players, battingRows, bowlingRows, fieldingRows, matchesById) {
-  const records = {};
+  const records = Object.create(null);
   for (const player of players) {
     const name = clean(player.name);
     const playerBatting = battingRows.filter((row) => row.player === name);
@@ -408,8 +414,8 @@ function battingStats(rows, allowEmpty = false) {
     balls,
     outs: sum(rows, "out"),
     highest: rows.length ? Math.max(...rows.map((row) => safeNumber(row.runs))) : null,
-    sixes: sum(rows, "sixes"),
-    fours: sum(rows, "fours"),
+    sixes: rows.some((row) => row.sixes === null) ? null : sum(rows, "sixes"),
+    fours: rows.some((row) => row.fours === null) ? null : sum(rows, "fours"),
     strike_rate: balls ? round((runs / balls) * 100, 1) : null,
     runs_per_innings: rows.length ? round(runs / rows.length, 2) : null,
   };
@@ -485,7 +491,7 @@ function groupBy(rows, getKey) {
     groups[key] = groups[key] || [];
     groups[key].push(row);
     return groups;
-  }, {});
+  }, Object.create(null));
 }
 
 function bySeq(a, b) {
@@ -528,3 +534,5 @@ function round(number, digits) {
   const factor = 10 ** digits;
   return Math.round((number + Number.EPSILON) * factor) / factor;
 }
+
+module.exports = { convertTablesExport, validateWebContract };

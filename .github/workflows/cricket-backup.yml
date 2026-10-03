@@ -1,0 +1,73 @@
+name: Cricket SG encrypted backup
+
+# Manual until hosted credentials, a real MEGA round trip and an isolated D1 restore pass.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cricket-sg-beta-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: github.repository == 'fahadferoze88-dev/CricketSG' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: cricket-backup
+    steps:
+      - name: Check out the reviewed default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js LTS
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Check hosted credentials are configured
+        env:
+          CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
+          MEGA_BACKUP_SESSION: ${{ secrets.MEGA_BACKUP_SESSION }}
+          CRICKET_BACKUP_KEY: ${{ secrets.CRICKET_BACKUP_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          for (const name of ['CLOUDFLARE_D1_BACKUP_TOKEN', 'MEGA_BACKUP_SESSION', 'CRICKET_BACKUP_KEY']) {
+            if (!process.env[name]) throw new Error(`Configure the ${name} secret before running this backup.`);
+          }
+          NODE
+
+      - name: Check encryption and large-row restoration
+        run: node --test standalone/backup.test.mjs
+
+      - name: Install pinned official MEGAcmd package
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-max-time 60 \
+            'https://mega.nz/linux/repo/xUbuntu_24.04/amd64/megacmd-xUbuntu_24.04_amd64.deb' \
+            --output "$RUNNER_TEMP/megacmd.deb"
+          echo "56828022459124f8ffe0276e5218718c1eda78f0299aded4eb5a159e9b8037b9  $RUNNER_TEMP/megacmd.deb" | sha256sum --check --status
+          sudo apt-get update -qq
+          sudo apt-get install --yes "$RUNNER_TEMP/megacmd.deb"
+
+      - name: Export in an idle window, encrypt, upload and verify ciphertext
+        id: backup
+        env:
+          CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
+          MEGA_BACKUP_SESSION: ${{ secrets.MEGA_BACKUP_SESSION }}
+          CRICKET_BACKUP_KEY: ${{ secrets.CRICKET_BACKUP_KEY }}
+        run: node standalone/backup.mjs backup
+
+      - name: Report an incomplete run, including failures before the backup started
+        if: always() && steps.backup.outcome != 'success'
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ### Backup incomplete
+
+          This run did not complete a verified backup. Check the failed setup step or the safe stage receipt above. Existing archives were kept. Retry manually in an idle window after fixing the failed stage.
+          SUMMARY
+
+      # No upload-artifact, cache, git commit, plaintext export or credential output.
+      # The disposable runner removes its MEGAcmd session cache when the job ends.

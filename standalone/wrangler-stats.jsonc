@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "cricket-sg-stats-beta",
+  "account_id": "590b0bb00c33381ac900eebd768a2641",
+  "main": "public-stats-worker.mjs",
+  "compatibility_date": "2026-03-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cricket-sg-beta",
+      "database_id": "ab93c103-3ba6-47c7-acc1-41e1695dc8df"
+    }
+  ]
+}
