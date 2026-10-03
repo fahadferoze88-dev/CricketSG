@@ -7,6 +7,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { WATERMARK_SQL, STATUS_WRITE_SQL, sourceWatermark, safeBackupReceipt } from "./backup-status.mjs";
 
 export const ACCOUNT = "590b0bb00c33381ac900eebd768a2641";
 export const SOURCE_DATABASE = "ab93c103-3ba6-47c7-acc1-41e1695dc8df";
@@ -186,7 +187,7 @@ export async function backupSources() {
     "standalone/package.json", "standalone/package-lock.json", "standalone/wrangler.jsonc", "standalone/README.md",
     "standalone/player-baseline.json", "standalone/import_history.py", "standalone/history-source.json",
     "standalone/statistics-preview.mjs", "standalone/finalized-stats.mjs", "standalone/public-stats-worker.mjs", "standalone/wrangler-stats.jsonc",
-    "standalone/publish-statistics.mjs", "scripts/download-mega-data.cjs"];
+    "standalone/publish-statistics.mjs", "standalone/backup-status.mjs", "scripts/download-mega-data.cjs"];
   for (const name of await readdir(join(root, "standalone/migrations"))) if (/^\d+_[a-z_]+\.sql$/.test(name)) files.push(`standalone/migrations/${name}`);
   for (const name of await readdir(join(root, "testing"))) if (/^[a-z-]+\.(?:js|mjs|html|css|json)$/.test(name)) files.push(`testing/${name}`);
   const sources = Object.fromEntries(await Promise.all(files.map(async (file) => [file, await readFile(join(root, file), "utf8")])));
@@ -224,33 +225,56 @@ export async function uploadAndVerify(encrypted, key, local, { runMega = mega, s
 }
 
 export async function writeBackupReceipt(receipt, { summaryPath = process.env.GITHUB_STEP_SUMMARY, log = console.log } = {}) {
-  const stages = ["configuration", "export", "validation", "encryption", "mega-login", "mega-folder", "upload-verification", "complete"];
-  if (!["verified", "deferred", "failed"].includes(receipt.status) || !stages.includes(receipt.stage)) throw Error("Invalid backup receipt status.");
-  // An explicit allowlist keeps database details, error bodies and secrets out of public run logs.
-  const safe = { status: receipt.status, at: new Date().toISOString(), stage: receipt.stage };
-  if (receipt.status === "verified") {
-    if (receipt.stage !== "complete" || !/^cricket-sg-beta-[\dTZ.-]+-[a-f0-9]{8}\.csgbackup$/.test(receipt.file || "") ||
-        !/^[a-f0-9]{64}$/.test(receipt.sha256 || "") || !Number.isSafeInteger(receipt.bytes) || receipt.bytes <= 0 ||
-        !Number.isSafeInteger(receipt.tableCount) || receipt.tableCount < requiredTables.length) throw Error("Invalid verified backup receipt.");
-    Object.assign(safe, { file: receipt.file, bytes: receipt.bytes, sha256: receipt.sha256, tableCount: receipt.tableCount });
-  }
+  const safe = safeBackupReceipt(receipt);
   const json = JSON.stringify(safe);
   if (summaryPath) await appendFile(summaryPath, `### Cricket SG encrypted backup\n\n\`\`\`json\n${json}\n\`\`\`\n\n${safe.status === "verified" ? "Ciphertext was downloaded again, checksum matched, and decryption succeeded. This receipt does not establish that a real D1 restore has passed." : "No new backup was verified by this run. Existing archives were kept. Retry manually in an idle window after resolving the failed stage."}\n`);
   log(json);
   return safe;
 }
 
+export async function recordBackupStatus(token, receipt, attemptedAt, fetcher = fetch) {
+  const safe = safeBackupReceipt(receipt, receipt.at || new Date().toISOString());
+  if (!Number.isFinite(Date.parse(attemptedAt))) throw Error("Invalid backup attempt time.");
+  await cloudRequest(token, SOURCE_DATABASE, "query", { sql: STATUS_WRITE_SQL,
+    params: [attemptedAt, safe.status, JSON.stringify(safe), safe.status === "verified" ? JSON.stringify(safe) : null] }, fetcher);
+  return safe;
+}
+
+export async function shouldRunBackup(token, { fetcher = fetch, now = Date.now() } = {}) {
+  const result = await cloudRequest(token, SOURCE_DATABASE, "query", {
+    sql: "SELECT last_verified FROM backup_status WHERE id = ?", params: [1],
+  }, fetcher);
+  const saved = result[0]?.results?.[0]?.last_verified;
+  if (!saved) return true;
+  const receipt = JSON.parse(saved), verified = safeBackupReceipt(receipt, receipt.at);
+  if (verified.status !== "verified" || !verified.coverage || now - Date.parse(verified.at) >= 24 * 60 * 60 * 1000) return true;
+  const current = await cloudRequest(token, SOURCE_DATABASE, "query", { sql: WATERMARK_SQL, params: [] }, fetcher);
+  return verified.coverage.sha256 !== (await sourceWatermark(current[0].results[0])).sha256;
+}
+
+export async function ensureMegaFolder(runMega = mega) {
+  try { await runMega("mkdir", ["-p", MEGA_PATH]); }
+  catch {
+    // MEGAcmd returns an error for an existing folder. Resolve that exact destination before proceeding.
+    await runMega("ls", [MEGA_PATH]);
+  }
+}
+
 export async function backup() {
   let directory, stage = "configuration";
+  const attemptedAt = new Date().toISOString(), token = process.env.CLOUDFLARE_D1_BACKUP_TOKEN;
   try {
-    const token = process.env.CLOUDFLARE_D1_BACKUP_TOKEN, session = process.env.MEGA_BACKUP_SESSION, key = process.env.CRICKET_BACKUP_KEY;
+    if (token) await recordBackupStatus(token, { status: "running", stage }, attemptedAt);
+    const session = process.env.MEGA_BACKUP_SESSION, key = process.env.CRICKET_BACKUP_KEY;
     if (!token || !session) throw Error("Hosted Cloudflare and MEGA backup credentials are required.");
     keyBytes(key);
     directory = await mkdtemp(join(tmpdir(), "cricket-backup-"));
     stage = "export";
     const { sql, bookmark } = await exportSQL(token);
     stage = "validation";
-    const { db, counts } = inspectSQL(sql); db.close();
+    const { db, counts } = inspectSQL(sql);
+    let coverage;
+    try { coverage = await sourceWatermark(db.prepare(WATERMARK_SQL).get()); } finally { db.close(); }
     restorePlan(sql); // A successful download alone does not establish recoverability.
     const payload = { format: 1, createdAt: new Date().toISOString(), account: ACCOUNT, database: SOURCE_DATABASE,
       bookmark, commit: process.env.GITHUB_SHA || null, sqlSha256: sha256(sql), counts, sql, sources: await backupSources() };
@@ -262,14 +286,20 @@ export async function backup() {
     stage = "mega-login";
     await mega("login", [session]);
     stage = "mega-folder";
-    await mega("mkdir", ["-p", MEGA_PATH]);
+    await ensureMegaFolder();
     stage = "upload-verification";
     await uploadAndVerify(encrypted, key, local);
     // Fixed destination and safe counts only. Never emit SQL, signed URLs, credentials or account session details.
-    return await writeBackupReceipt({ status: "verified", stage: "complete", file: filename, bytes: encrypted.length, sha256: sha256(encrypted), tableCount: Object.keys(counts).length });
+    const receipt = await writeBackupReceipt({ status: "verified", stage: "complete", file: filename, bytes: encrypted.length, sha256: sha256(encrypted), tableCount: Object.keys(counts).length, coverage });
+    await recordBackupStatus(token, receipt, attemptedAt);
+    return receipt;
   } catch (error) {
     const deferred = error.code === "SCORING_ACTIVE";
-    await writeBackupReceipt({ status: deferred ? "deferred" : "failed", stage });
+    const receipt = await writeBackupReceipt({ status: deferred ? "deferred" : "failed", stage });
+    if (token) {
+      try { await recordBackupStatus(token, receipt, attemptedAt); }
+      catch { console.error("Backup status could not be saved. Check this workflow run; the previous verified receipt was kept."); }
+    }
     // Raw network/SQLite/MEGAcmd errors can contain private URLs or row values; emit only a fixed stage.
     throw Error(deferred ? "Full backup deferred because scoring is active. Retry in an idle window." : `Backup did not complete during ${stage}. Existing archives were kept.`);
   } finally {
@@ -299,6 +329,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try {
     const [command = "backup", archive, target] = process.argv.slice(2);
     if (command === "backup") await backup();
+    else if (command === "should-run") {
+      if (!process.env.CLOUDFLARE_D1_BACKUP_TOKEN) throw Error("Cloudflare status token is required.");
+      const needed = await shouldRunBackup(process.env.CLOUDFLARE_D1_BACKUP_TOKEN);
+      if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `needed=${needed}\n`);
+      console.log(JSON.stringify({ needed }));
+    }
+    else if (command === "failure-status") {
+      if (!process.env.CLOUDFLARE_D1_BACKUP_TOKEN) throw Error("Cloudflare status token is required.");
+      const receipt = await writeBackupReceipt({ status: "failed", stage: "setup" });
+      await recordBackupStatus(process.env.CLOUDFLARE_D1_BACKUP_TOKEN, receipt, receipt.at);
+    }
     else if (["verify", "restore"].includes(command) && archive) {
       const payload = decryptBackup(await readFile(archive), process.env.CRICKET_BACKUP_KEY);
       if (command === "verify") { const { db, counts } = inspectSQL(payload.sql); db.close(); restorePlan(payload.sql); console.log(JSON.stringify({ verified: true, tableCount: Object.keys(counts).length })); }
@@ -306,6 +347,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
         if (!process.env.CLOUDFLARE_D1_BACKUP_TOKEN) throw Error("Cloudflare restore token is required.");
         console.log(JSON.stringify(await restoreD1(payload, target, process.env.CLOUDFLARE_D1_BACKUP_TOKEN)));
       }
-    } else throw Error("Use: backup.mjs backup | verify ARCHIVE | restore ARCHIVE EMPTY_DATABASE_ID");
+    } else throw Error("Use: backup.mjs backup | should-run | failure-status | verify ARCHIVE | restore ARCHIVE EMPTY_DATABASE_ID");
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

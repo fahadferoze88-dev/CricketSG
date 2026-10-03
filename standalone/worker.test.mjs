@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import worker from "./worker.mjs";
+import { recoveryDB } from "./test-db.mjs";
+import { readFileSync } from "node:fs";
 
 test("static-asset requests verify signed Access tokens without ctx.access, rejecting invalid identities", async (t) => {
   const issuer = "https://access.example.com";
@@ -56,7 +58,9 @@ test("static-asset requests verify signed Access tokens without ctx.access, reje
   const session = await worker.fetch(request(token), env, {});
   assert.equal(session.status, 200, "valid signed requests work without ctx.access");
   assert.equal(session.headers.get("Cache-Control"), "no-store");
-  assert.deepEqual(await session.json(), { name: "Test scorer", canCorrect: true, storage: "device-and-cloud" });
+  assert.deepEqual(await session.json(), { name: "Test scorer", canCorrect: true, storage: "device-and-cloud", canViewBackups: false });
+  assert.equal((await worker.fetch(request(token, "/api/backup-status"), env, {})).status, 403);
+  assert.equal((await worker.fetch(request(token, "/api/backup-status", "POST"), env, {})).status, 405);
   assert.equal(await (await worker.fetch(request(token, "/"), env, {})).text(), "Scorer app");
   assert.equal((await worker.fetch(request(token, "/api/unrecognized", "POST"), env, {})).status, 405);
   assert.equal((await worker.fetch(request(token, "/api/unrecognized"), env, {})).status, 404);
@@ -69,4 +73,17 @@ test("static-asset requests verify signed Access tokens without ctx.access, reje
   assert.doesNotMatch(await unavailable.text(), /Private database details/);
   assert.equal(assetReads, 1);
   assert.equal(keyFetches, 1, "public signing keys are cached across requests");
+  const { sqlite, DB } = recoveryDB();
+  try {
+    sqlite.exec(readFileSync(new URL('./migrations/0006_backup_status.sql', import.meta.url), 'utf8'));
+    const ownerEnv = { ...env, DB, OWNER_EMAIL: 'first@example.com' };
+    const owner = await sign({ email: 'first@example.com' });
+    const backup = await worker.fetch(request(owner, '/api/backup-status'), ownerEnv);
+    assert.equal(backup.status, 200);
+    assert.equal(backup.headers.get('Cache-Control'), 'no-store');
+    assert.equal((await backup.json()).lastVerified, null);
+    const other = await sign({ email: 'second@example.com' });
+    assert.equal((await worker.fetch(request(other, '/api/backup-status'), ownerEnv)).status, 403);
+    assert.equal((await (await worker.fetch(request(owner), ownerEnv)).json()).canViewBackups, true);
+  } finally { sqlite.close(); }
 });

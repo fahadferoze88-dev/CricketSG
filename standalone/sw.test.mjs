@@ -20,7 +20,7 @@ test("offline shell is complete, excludes login/API data, and keeps one asset ve
       clients: { claim: async () => {} },
       addEventListener: (name, handler) => { handlers[name] = handler; },
     },
-    caches: { open: async () => cache, keys: async () => ["cricket-sg-shell-v9"], delete: async () => {} },
+    caches: { open: async () => cache, keys: async () => ["cricket-sg-shell-v10"], delete: async () => {} },
     fetch: async (request) => {
       fetches++;
       if (mode === "offline") throw new TypeError("Network unavailable");
