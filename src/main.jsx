@@ -19,7 +19,7 @@ const TABS = [
 const reviewStatistics = new URLSearchParams(window.location.search).get("stats") === "review";
 const statisticsUrl = reviewStatistics
   ? "https://cricket-sg-stats-beta.cricket-sg-fahad.workers.dev/review/data.json"
-  : "/data.json";
+  : "https://cricket-sg-stats-beta.cricket-sg-fahad.workers.dev/data.json";
 
 function App() {
   const [data, setData] = useState(null);
@@ -37,6 +37,12 @@ function App() {
         return response.json();
       })
       .then((json) => {
+        if (!json?.meta || !Array.isArray(json.players) || !Array.isArray(json.matches) || !json.views || !json.raw) {
+          throw new Error("The statistics service returned an incomplete scorebook.");
+        }
+        if (!reviewStatistics && (json.meta.review_only !== false || json.meta.publication_ready !== true || json.meta.publication?.channel !== "primary")) {
+          throw new Error("Official statistics have not been published yet.");
+        }
         if (!cancelled) setData(json);
       })
       .catch((loadError) => {
@@ -54,6 +60,7 @@ function App() {
           <p className="eyebrow">Data unavailable</p>
           <h1>Could not load the scorebook.</h1>
           <p>Please retry in a moment. Your saved scores are unaffected.</p>
+          <button type="button" onClick={() => window.location.reload()}>Retry statistics</button>
           {reviewStatistics && <p><a href="/">Open the current statistics</a></p>}
           <p className="muted">{error}</p>
         </section>
@@ -109,7 +116,7 @@ function Shell({ children, page, setPage, data }) {
       <footer className="site-footer">
         <span>Cricket SG Central</span>
         <a href="https://cricket-sg-beta.cricket-sg-fahad.workers.dev/">Open scorer</a>
-        {data && <span>Updated {formatDateTime(data.meta.generated_at)}</span>}
+        {data && <span>Updated {formatDateTime(data.meta.publication?.generated_at || data.meta.generated_at)}</span>}
       </footer>
     </>
   );
@@ -379,6 +386,7 @@ function PlayerRecord({ player }) {
         </div>
         <FormLine values={player.form || []} large />
       </div>
+      {player.review_notes?.map((note) => <p className="notice-card" role="note" key={note}>{note}</p>)}
       <PlayerDiscipline
         title="Batting"
         stats={[

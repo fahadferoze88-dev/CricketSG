@@ -1,9 +1,9 @@
-name: Sync data from MEGA
+name: Legacy MEGA download (manual only)
+
+# Retained for explicit historical retrieval. The live dashboard reads the D1 primary feed.
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 */6 * * *"
 
 permissions:
   contents: write

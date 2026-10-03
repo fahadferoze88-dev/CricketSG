@@ -2,6 +2,8 @@ name: Cricket SG statistics
 
 # Primary publication requires the source-pinned approval in history-source.json.
 on:
+  schedule:
+    - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
       channel:
