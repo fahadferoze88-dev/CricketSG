@@ -479,3 +479,26 @@ test("manual batter taps and pair dot reminder survive restart; Out-Other is ent
   assert.equal(app.run("state.total"), 3, "a missed wicket is flagged, never fabricated");
   assert.match(app.element("dotStatus").textContent, /correct the third dot/);
 });
+
+
+test("owner backup status is read-only, warns about stale/newer cloud data, and does not block scoring", async () => {
+  const calls = [];
+  const app = await scorer(new IDBFactory(), new Map(), async path => {
+    calls.push(path);
+    if (path === '/api/session') return Response.json({ canViewBackups: true });
+    if (path === '/api/backup-status') return Response.json({ lastVerified: { at: '2026-09-01T00:00:00.000Z' },
+      latest: { status: 'failed', stage: 'export' }, stale: true, newerCloudChanges: true });
+    return Response.json({ matches: [] });
+  });
+  await app.run('loadBackupStatus()');
+  assert.equal(app.element('backupHealth').hidden, false);
+  assert.match(app.element('backupHealthText').textContent, /over 48 hours/);
+  assert.match(app.element('backupHealthText').textContent, /Newer cloud/);
+  assert.match(app.element('backupHealthText').textContent, /Device-only changes/);
+  assert.equal(app.run('ready'), true);
+  app.run('fetch = async () => { throw Error("offline") }');
+  await app.run('loadBackupStatus()');
+  assert.match(app.element('backupHealthText').textContent, /does not affect scoring/);
+  assert.equal(app.run('ready'), true);
+  assert.ok(calls.includes('/api/backup-status'));
+});

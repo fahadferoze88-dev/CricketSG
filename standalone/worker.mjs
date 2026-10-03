@@ -1,6 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { playerAPI } from "./players.mjs";
 import { matchAPI } from "./matches.mjs";
+import { backupStatus } from "./backup-status.mjs";
 
 let keySet;
 let keySetIssuer;
@@ -37,11 +38,16 @@ export default {
       ).bind(identity.email.toLowerCase()).first();
       if (!scorer) return reply({ error: "Scorer access required" }, 403);
       const path = new URL(request.url).pathname;
+      const isOwner = typeof env.OWNER_EMAIL === "string" && identity.email.toLowerCase() === env.OWNER_EMAIL.trim().toLowerCase();
       if (path === "/api/matches" || path.startsWith("/api/matches/")) return await matchAPI(request, env, identity.email.toLowerCase(), scorer.can_correct === 1);
       if (path === "/api/players" || path.startsWith("/api/players/")) return await playerAPI(request, env, identity.email.toLowerCase());
       if (!["GET", "HEAD"].includes(request.method)) return reply({ error: "Method not allowed" }, 405);
       if (path === "/api/session") {
-        return reply({ name: scorer.display_name, canCorrect: scorer.can_correct === 1, storage: "device-and-cloud" }, 200);
+        return reply({ name: scorer.display_name, canCorrect: scorer.can_correct === 1, storage: "device-and-cloud", canViewBackups: isOwner }, 200);
+      }
+      if (path === "/api/backup-status") {
+        if (!isOwner) return reply({ error: "Owner access required" }, 403);
+        return reply(await backupStatus(env.DB), 200);
       }
       if (path.startsWith("/api/")) return reply({ error: "Not found" }, 404);
       const asset = await env.ASSETS.fetch(request);

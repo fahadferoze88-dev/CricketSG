@@ -20,6 +20,10 @@
       <button type="button" id="setupCloudMatches" class="scenario-card">Open cloud matches</button>
       <button type="button" id="playersButton" class="scenario-card">Players · add or manage</button>
       <button type="button" id="copyLineup" class="scenario-card">Copy previous lineup</button>
+      <section id="backupHealth" class="setup-card" hidden aria-label="MEGA backup status">
+        <p id="backupHealthText" role="status"></p>
+        <button type="button" id="refreshBackupHealth">Refresh backup status</button>
+      </section>
       <form id="setupForm">
         <section class="setup-card setup-details">
           <div><label for="matchDate">Match date</label><input id="matchDate" type="date" required /></div>

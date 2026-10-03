@@ -40,10 +40,18 @@ jobs:
           }
           NODE
 
+      - name: Check for changed data or a daily backup due
+        id: need
+        env:
+          CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
+        run: node standalone/backup.mjs should-run
+
       - name: Check encryption and large-row restoration
-        run: node --test standalone/backup.test.mjs
+        if: steps.need.outputs.needed == 'true'
+        run: node --test standalone/backup.test.mjs standalone/backup-status.test.mjs
 
       - name: Install pinned official MEGAcmd package
+        if: steps.need.outputs.needed == 'true'
         run: |
           curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-max-time 60 \
             'https://mega.nz/linux/repo/xUbuntu_24.04/amd64/megacmd-xUbuntu_24.04_amd64.deb' \
@@ -54,14 +62,21 @@ jobs:
 
       - name: Export in an idle window, encrypt, upload and verify ciphertext
         id: backup
+        if: steps.need.outputs.needed == 'true'
         env:
           CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
           MEGA_BACKUP_SESSION: ${{ secrets.MEGA_BACKUP_SESSION }}
           CRICKET_BACKUP_KEY: ${{ secrets.CRICKET_BACKUP_KEY }}
         run: node standalone/backup.mjs backup
 
+      - name: Record a setup failure without replacing a precise backup outcome
+        if: failure() && steps.backup.outcome == 'skipped'
+        env:
+          CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
+        run: node standalone/backup.mjs failure-status
+
       - name: Report an incomplete run, including failures before the backup started
-        if: always() && steps.backup.outcome != 'success'
+        if: failure()
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
           ### Backup incomplete

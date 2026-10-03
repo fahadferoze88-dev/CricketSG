@@ -717,6 +717,30 @@ function recoveryError() {
   $("saveWarning").hidden = false;
 }
 
+async function loadBackupStatus() {
+  if (typeof fetch !== "function") return;
+  const panel = $("backupHealth"), text = $("backupHealthText");
+  try {
+    if (panel.hidden) {
+      const session = await fetch("/api/session", { credentials: "same-origin", redirect: "error", cache: "no-store" });
+      if (!session.ok || !(await session.json()).canViewBackups) return;
+      panel.hidden = false;
+    }
+    text.textContent = "Checking MEGA backup…";
+    const response = await fetch("/api/backup-status", { credentials: "same-origin", redirect: "error", cache: "no-store" });
+    if (response.status === 403) { panel.hidden = true; return; }
+    if (!response.ok) throw Error("Unavailable");
+    const status = await response.json(), verified = status.lastVerified;
+    const lines = [verified ? `MEGA last verified: ${new Date(verified.at).toLocaleString()}.` : "No verified MEGA backup recorded yet."];
+    if (verified && status.stale) lines.push("Backup is over 48 hours old.");
+    if (status.newerCloudChanges === true) lines.push("Newer cloud match or player changes are waiting for the next backup.");
+    if (verified && status.newerCloudChanges === null) lines.push("Coverage of the latest cloud changes has not been checked.");
+    if (status.latest && status.latest.status !== "verified") lines.push(`Latest attempt: ${status.latest.status} (${status.latest.stage}).`);
+    lines.push("Checked now. Device-only changes are not included. Refresh to check again.");
+    text.textContent = lines.join(" ");
+  } catch { if (!panel.hidden) text.textContent = "Backup status unavailable. This does not affect scoring or device saves. Refresh when connected."; }
+}
+
 async function bootstrap() {
   $("setupView").hidden = true;
   renderSetupInputs();
@@ -786,7 +810,7 @@ async function prepareOffline() {
       changed();
     });
     await navigator.serviceWorker.ready;
-    const cache = await caches.open("cricket-sg-shell-v9");
+    const cache = await caches.open("cricket-sg-shell-v10");
     const installed = await cache.match(new URL("./index.html", location.href).href);
     $("offlineStatus").textContent = installed ? "Ready to reopen offline on this device" : "Open online once to prepare offline recovery";
     if (registration.waiting) $("offlineStatus").textContent += " · Update ready after all scorer tabs close";
@@ -980,4 +1004,7 @@ async function finalizeMatch() {
 }
 
 const boot = bootstrap();
+// Read-only and independent of scoring; no polling, alerts or automatic app reloads.
+boot.then(loadBackupStatus);
+$("refreshBackupHealth").addEventListener("click", loadBackupStatus);
 prepareOffline();

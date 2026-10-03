@@ -1,4 +1,4 @@
-const CACHE = "cricket-sg-shell-v9";
+const CACHE = "cricket-sg-shell-v10";
 const shell = ["./index.html", "./styles.css", "./storage.js", "./recovery.mjs", "./app.js", "./scoring.mjs", "./players.js", "./corrections.js"];
 const paths = new Set(shell.map((path) => new URL(path, self.registration.scope).pathname));
 
