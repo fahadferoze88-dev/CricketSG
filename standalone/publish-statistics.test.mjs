@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { recoveryDB } from './test-db.mjs';
 import { freshScore, applyDelivery } from '../testing/scoring.mjs';
-import { buildSnapshot, publishReview, readPinnedHistory, captureSource } from './publish-statistics.mjs';
+import { buildSnapshot, publishReview, publishStatistics, readPinnedHistory, captureSource, APPEARANCE_POLICY } from './publish-statistics.mjs';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const id = number => `10000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -36,10 +36,10 @@ function finalized(revision = 2) {
   });
   return { match_id: id(99), revision, snapshot, content_hash: hash(snapshot), created_at: now() };
 }
-function dbFixture() {
+function dbFixture(registry = players()) {
   const { sqlite } = recoveryDB();
   sqlite.exec(readFileSync(new URL('./migrations/0005_statistics.sql', import.meta.url), 'utf8'));
-  for (const player of players()) sqlite.prepare(`INSERT INTO players(id,name,nickname,normalized_name,creation_payload,created_at,updated_at,updated_by,reason)
+  for (const player of registry) sqlite.prepare(`INSERT INTO players(id,name,nickname,normalized_name,creation_payload,created_at,updated_at,updated_by,reason)
     VALUES(?,?,?,?,?,?,?,?,?)`).run(player.id, player.name, '', player.name.toLowerCase(), '{}', now(), now(), 'first@example.com', 'Fixture');
   const capturedQueries = [];
   const fetcher = async (_url, options) => {
@@ -162,4 +162,62 @@ test('pinned gzip source validates bytes, workbook identity, counts and review-o
     assert.throws(() => buildSnapshot({ history: invalid, source: source(), players: players() }), /row counts/);
     assert.throws(() => buildSnapshot({ history: history(), source: { ...source(), season: 'S9_2027' }, players: players() }), /reviewed manifest/);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('approved Ammar hold keeps 28 career appearances, all seven catches and the original fielding record', async () => {
+  const pinned = await readPinnedHistory(new URL('./history.json.gz', import.meta.url), new URL('./history-source.json', import.meta.url));
+  const registry = pinned.history.tables.players.map(row => ({ id: row.player_id, name: row.name, nickname: '', revision: 1, merged_into: null, review_required: 0 }));
+  const decided = { ...pinned.source, season_confirmed: true, appearance_count_policy: APPEARANCE_POLICY };
+  const before = JSON.stringify(pinned.history);
+  const snapshot = buildSnapshot({ history: pinned.history, source: decided, players: registry, capturedAt: now() });
+  const data = JSON.parse(gunzipSync(Buffer.from(snapshot.gzip_base64, 'base64')));
+  const record = data.views.player_records.Ammar;
+  assert.equal(record.matches, 28);
+  assert.equal(data.players.find(row => row.name === 'Ammar').matches, 28);
+  assert.equal(record.fielding.catches, 7);
+  assert.equal(record.fielding.matches, 29);
+  assert.match(record.review_notes[0], /one catch and fielding entry remain included/);
+  const raw = data.raw.fielding;
+  assert.ok(raw.rows.some(row => row[raw.columns.indexOf('match')] === '20231104_2' && row[raw.columns.indexOf('player')] === 'Ammar' && row[raw.columns.indexOf('catches')] === 1));
+  assert.equal(data.meta.record_holds[0].career_appearance_counted, false);
+  assert.equal(JSON.parse(snapshot.source_manifest).unresolved.appearance_count_policy, false);
+  assert.equal(JSON.parse(pinned.history ? JSON.stringify(pinned.history) : '{}').tables.players.find(row => row.name === 'Ammar').matches, 28);
+  assert.equal(JSON.stringify(pinned.history), before);
+  const next = finalized();
+  next.snapshot = next.snapshot.replaceAll(id(1), '333f6749-ebf8-425d-842a-7790bfa9d81f');
+  next.content_hash = hash(next.snapshot);
+  const additionalPlayers = players().filter(player => player.id !== id(1));
+  const updated = buildSnapshot({ history: pinned.history, source: decided, players: [...registry, ...additionalPlayers], finalizations: [next], capturedAt: now() });
+  const updatedData = JSON.parse(gunzipSync(Buffer.from(updated.gzip_base64, 'base64')));
+  assert.equal(updatedData.views.player_records.Ammar.matches, 29, 'future finalized participation adds to the confirmed 28-match baseline');
+  assert.equal(updatedData.views.player_records.Ammar.fielding.catches, 7);
+  const altered = structuredClone(pinned.history);
+  altered.tables.fielding.find(row => row.name === 'Ammar' && row.match_id === '20231104_2').catches = 2;
+  assert.throws(() => buildSnapshot({ history: altered, source: decided, players: registry }), /held Ammar record changed/);
+});
+
+test('primary needs source-specific approval and remains isolated from the default review channel', async () => {
+  const pinned = await readPinnedHistory(new URL('./history.json.gz', import.meta.url), new URL('./history-source.json', import.meta.url));
+  const registry = pinned.history.tables.players.map(row => ({ id: row.player_id, name: row.name, nickname: '', revision: 1, merged_into: null, review_required: 0 }));
+  const approved = { ...pinned.source, review_only: false, season_confirmed: true, appearance_count_policy: APPEARANCE_POLICY,
+    primary_approval: { approved: true, source_version: pinned.source.source_version, history_gzip_sha256: pinned.source.gzip_sha256,
+      season: pinned.source.season, appearance_count_policy: APPEARANCE_POLICY, approved_at: now() } };
+  const unapproved = { ...pinned.source, review_only: true, primary_approval: undefined };
+  await assert.rejects(() => publishStatistics({ token: 'token', ...pinned, source: unapproved, channel: 'primary', fetcher: () => { throw Error('Should not reach database'); } }), /explicit approval/);
+  assert.throws(() => buildSnapshot({ history: pinned.history, source: approved, players: registry, channel: 'arbitrary' }), /channel/);
+  const wrongHash = structuredClone(approved); wrongHash.primary_approval.history_gzip_sha256 = '0'.repeat(64);
+  assert.throws(() => buildSnapshot({ history: pinned.history, source: wrongHash, players: registry, channel: 'primary' }), /manifest/);
+  const f = dbFixture(registry);
+  try {
+    const official = await publishStatistics({ token: 'token', history: pinned.history, source: approved, channel: 'primary', fetcher: f.fetcher, now });
+    assert.equal(official.name, 'primary'); assert.equal(official.publication_ready, true);
+    const saved = f.sqlite.prepare("SELECT * FROM public_statistics WHERE name='primary'").get();
+    const data = JSON.parse(gunzipSync(Buffer.from(saved.gzip_base64, 'base64')));
+    assert.equal(data.meta.review_only, false); assert.equal(data.meta.publication_ready, true);
+    assert.equal(data.meta.publication.channel, 'primary'); assert.equal(data.views.player_records.Ammar.matches, 28);
+    assert.equal(f.sqlite.prepare("SELECT count(*) n FROM public_statistics WHERE name='review'").get().n, 0);
+    const review = await publishStatistics({ token: 'token', history: pinned.history, source: approved, fetcher: f.fetcher, now });
+    assert.equal(review.name, 'review'); assert.equal(review.publication_ready, false);
+    assert.deepEqual(f.sqlite.prepare("SELECT * FROM public_statistics WHERE name='primary'").get(), saved);
+  } finally { f.sqlite.close(); }
 });

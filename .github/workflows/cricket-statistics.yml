@@ -1,18 +1,27 @@
-name: Cricket SG statistics review
+name: Cricket SG statistics
 
-# Manual review channel only. Production statistics require a separate approved cutover.
+# Primary publication requires the source-pinned approval in history-source.json.
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Statistics publication channel
+        required: true
+        type: choice
+        default: primary
+        options:
+          - primary
+          - review
 
 permissions:
   contents: read
 
 concurrency:
-  group: cricket-sg-review-statistics
+  group: cricket-sg-statistics
   cancel-in-progress: false
 
 jobs:
-  publish-review:
+  publish:
     if: github.repository == 'fahadferoze88-dev/CricketSG' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -39,9 +48,10 @@ jobs:
           console.log('Pinned historical review artifact verified.');
           NODE
 
-      - name: Capture immutable results and atomically replace the review snapshot
+      - name: Capture immutable results and atomically replace the approved snapshot
         env:
           CLOUDFLARE_D1_BACKUP_TOKEN: ${{ secrets.CLOUDFLARE_D1_BACKUP_TOKEN }}
-        run: node standalone/publish-statistics.mjs standalone/history.json.gz standalone/history-source.json
+          STATISTICS_CHANNEL: ${{ inputs.channel || 'primary' }}
+        run: node standalone/publish-statistics.mjs standalone/history.json.gz standalone/history-source.json "$STATISTICS_CHANNEL"
 
-      # No schedule, primary snapshot, public deployment, mutable checkpoint export or artifact upload.
+      # Only immutable finalized match revisions are published. No checkpoint export or artifact upload.
